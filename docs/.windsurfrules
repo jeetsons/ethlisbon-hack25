@@ -1,0 +1,76 @@
+# Windsurf IDE Project Rules (.windsurfrules)
+# Project: DeFi Safe Leveraged LP with Gnosis Pay, Aave V3, Uniswap V4
+
+version: 5
+
+## Project Overview
+
+This repository implements a DeFi protocol for leveraged LP provision using Gnosis Pay (Gnosis Safe), Aave V3, and Uniswap V4 on the Base chain (network ID 8453).  
+All onboarding, wallet, and contract interactions must use Gnosis Pay and follow the workflow and specs in the `docs/` directory.
+
+## Main Folders
+
+- `docs/`  
+  Contains all hackathon specs, UI/UX guides, technical breakdowns, and developer task assignments.  
+  **Always consult `docs/2_combined/readme.md` for up-to-date requirements, approvals, and flows.**
+
+- `contracts/`  
+  Solidity sources for smart contracts, including:
+  - LeveragedLPManager (strategy logic)
+  - FeeCollectHook (Uniswap V4 hook)
+  - (Add other contracts as needed)
+
+- `frontend/`  
+  All UI/UX code using Gnosis Pay SDK and Safe{Core} SDK, plus wallet/approval flows.
+
+## Coding Style & Conventions
+
+- Follow Solidity style guide: https://docs.soliditylang.org/en/v0.8.20/style-guide.html
+- Use Prettier or equivalent for frontend code (TypeScript/React).
+- Document all public functions and emit events for key actions.
+- All new features must be reflected in the appropriate spec in `docs/`.
+
+## Security & Approval Rules
+
+- **No contract asset custody:** All user funds/NFTs must stay in the Gnosis Pay (Gnosis Safe) wallet; contracts only act as operators.
+- **Approval requirements:**  
+  - ERC20: Safe must approve LeveragedLPManager for USDC/ETH as needed.
+  - NFT: After LP mint, Safe must approve:
+    - FeeCollectHook (for fee automation)
+    - LeveragedLPManager (for exit/unwind)
+- **UI must check and prompt for all required approvals before allowing actions.**
+- **Exit/unwind cannot proceed unless LeveragedLPManager is approved for the LP NFT.**
+- Always validate user input and handle errors gracefully.
+
+## Collaboration Rules
+
+- Dev 1 (Frontend):  
+  - Integrate Gnosis Pay SDK and all approval flows.
+  - Reflect all contract events and approval statuses in UI.
+  - Coordinate with Dev 2 for ABI, contract addresses, and event schemas.
+
+- Dev 2 (Contracts):  
+  - Implement, test, and deploy all contracts on Base.
+  - Document contract interface and events.
+  - Provide deployment details and ABI to Dev 1.
+
+- **Never merge code that violates security assumptions or core workflow described in `docs/2_combined/readme.md`.**
+
+## Documentation Rules
+
+- All major changes must be documented in `docs/2_combined/readme.md` and, if necessary, referenced from the .windsurfrules.
+- Use clear comments and commit messages—assume junior devs and external reviewers will read your code.
+
+## Testing
+
+- All contracts must have basic unit tests (preferably Hardhat).
+- All UI flows must be tested with Gnosis Pay wallet on Base testnet.
+- Manual testing checklist: see "Step-by-Step Hackathon Checklist" in `docs/2_combined/readme.md`.
+
+## Additional Notes
+
+- Target blockchain: **Base (network ID 8453) only**.
+- Reference spec: `docs/2_combined/readme.md`
+- For any questions, consult the docs or reach out to project leads.
+
+# End of .windsurfrules
