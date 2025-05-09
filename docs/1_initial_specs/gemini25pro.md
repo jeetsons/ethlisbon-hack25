@@ -420,7 +420,9 @@ contract HookContract /* is IHooks - actual interface TBD */ {
 ```
 
 Key Logic: The hook needs a way to identify the specific LP position and its owner (the User's Safe) from the arguments passed by the Uniswap pool. The collect function on Uniswap V4 will require the LP owner's address and potentially the specific position ID/NFT ID. The hook must have approval from the User's Safe to perform this collect action.
-5. Safe Integration
+
+
+## 5. Safe Integration
 1/1 Safe Model: Each user operates through their own Gnosis Safe (1 owner, 1 threshold).
 Safe{Core} SDK: The frontend uses this SDK to:
 Facilitate Safe creation/connection.
@@ -430,7 +432,8 @@ Ownership: The User's Safe is the direct owner of Aave aTokens and the Uniswap V
 Permissions:
 User's Safe approves MainLogicContract for Aave borrow delegation and on-behalf-of actions (repay/supply).
 User's Safe approves HookContract to collect fees from its Uniswap LP NFT.
-6. P&L and Analytics (Hackathon Scope)
+
+## 6. P&L and Analytics (Hackathon Scope)
 On-Chain Data:
 MainLogicContract records initialEthSuppliedToAave and initialUsdcBorrowed in UserPosition struct.
 Comprehensive events (StrategyInitiated, FeesProcessed, PositionClosed) are emitted by MainLogicContract.
@@ -444,7 +447,8 @@ Current Aave USDC borrow APY (fetched from Aave direct view function or reliable
 Current Uniswap V4 Pool fee tier. Actual LP APY is complex; link to external analytics if available, otherwise, focus on fee collection events.
 Historical Data: Relies on emitted events for future indexing via TheGraph or similar services. The hackathon product will not feature deep historical analytics.
 Fee Tracking: UI can display a list of FeesProcessed events for the connected user's Safe by querying the contract or a simple event indexer if built.
-7. Security Considerations (Basic)
+
+## 7. Security Considerations (Basic)
 Access Control:
 MainLogicContract:
 borrowAndCreateLP: Called by User's Safe.
@@ -456,7 +460,8 @@ Approvals: Ensure approvals are specific and necessary. Consider approve with ex
 Slippage: borrowAndCreateLP should include parameters for slippage protection when adding liquidity to Uniswap.
 Oracle Risk: The strategy relies on Aave's and Uniswap's operational integrity. Price oracle risks are inherent in Aave.
 Impermanent Loss: Users should be made aware of IL risks in LPs.
-8. Assumptions & Limitations (Hackathon Scope)
+
+## 8. Assumptions & Limitations (Hackathon Scope)
 Happy Path Focus: Assumes Aave and Uniswap V4 protocols are functioning correctly.
 Single Pair: Focuses only on USDC/ETH.
 Full Range Liquidity: For simplicity in LP creation, might default to full-range, though Uniswap V4 encourages concentrated liquidity. Parameters for range can be added if time permits.
@@ -465,7 +470,8 @@ Gas Costs: Automated fee processing incurs gas. The 10-trade threshold is a heur
 Uniswap V4 Hook Interface: Based on anticipated design; actual implementation must match the final V4 hook interface.
 Error Handling: Robust error handling in UI for transaction failures. Smart contract errors will revert.
 No Emergency Withdraw/Pause: MainLogicContract does not currently feature global emergency pause or individual emergency withdrawal logic beyond the standard close flow.
-9. Next Steps / Open Questions for Developer
+
+## 9. Next Steps / Open Questions for Developer
 Finalize Uniswap V4 Hook Interface: Obtain the exact interface and callback signatures for afterSwap (or relevant hook type) and collect functionality.
 Aave V3 onBehalfOf Mechanics: Confirm the precise mechanism for MainLogicContract to borrow, repay, and supply on behalf of the User's Safe (Credit Delegation vs. simple onBehalfOf parameter with msg.sender authorization).
 ETH Handling for LP Creation: Clarify the source and flow of the ETH component required by MainLogicContract to create the Uniswap LP alongside the borrowed USDC.
