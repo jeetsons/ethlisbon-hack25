@@ -181,7 +181,11 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
         require(userPositions[safe].safe == address(0), "Strategy already active");
         
         // [1] Transfer ETH from Safe to this contract
-        // The Safe must have approved this contract to transfer ETH
+        // Check if the Safe has approved this contract to transfer ETH
+        uint256 allowance = IERC20(weth).allowance(safe, address(this));
+        require(allowance >= ethAmount, "Insufficient WETH allowance");
+        
+        // Transfer the WETH from Safe to this contract
         IERC20(weth).transferFrom(safe, address(this), ethAmount);
         
         // [2] Supply ETH to Aave as collateral on behalf of the Safe

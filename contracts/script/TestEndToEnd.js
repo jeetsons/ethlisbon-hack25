@@ -26,7 +26,7 @@ const WETHABI = [
 // Configuration
 const config = {
   // Contract addresses from deployment
-  leveragedLPManager: "0x7DD8fB835e39aeb631C1Be80dA0fcb6E0C17D979", // LeveragedLPManager address
+  leveragedLPManager: "0x9C420Cbb54F85b612DCAcab8FD4Ad30f6F43B6d2", // LeveragedLPManager address
   weth: "0x4200000000000000000000000000000000000006", // WETH on Base
   usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
 
@@ -197,7 +197,7 @@ async function main() {
         
         // Execute the approval transaction with a fixed gas limit
         console.log("Executing Safe transaction for WETH approval...");
-        const approvalTxResponse = await safeSdk.executeTransaction(signedApprovalTx, { gasLimit: 1000000 });
+        const approvalTxResponse = await safeSdk.executeTransaction(signedApprovalTx);
         await approvalTxResponse.transactionResponse?.wait();
         
         console.log(`WETH approved for LeveragedLPManager via Safe. Tx hash: ${approvalTxResponse.transactionResponse?.hash}`);
@@ -218,10 +218,6 @@ async function main() {
         config.slippageBps
       ]);
       
-      // Debug: Decode the transaction data to verify parameters
-      console.log("\nDEBUG: Decoding startStrategy transaction data");
-      console.log("Raw transaction data:", startStrategyData);
-      
       try {
         const decodedData = leveragedLPManager.interface.decodeFunctionData("startStrategy", startStrategyData);
         console.log("Decoded parameters:");
@@ -230,43 +226,8 @@ async function main() {
         console.log("- LTV:", decodedData[2].toString());
         console.log("- Slippage BPS:", decodedData[3].toString());
         
-        // Validate parameters
-        if (decodedData[0].toLowerCase() !== safeAddress.toLowerCase()) {
-          console.error("ERROR: Safe address mismatch!");
-          console.error(`Expected: ${safeAddress}, Got: ${decodedData[0]}`);
-        }
-        
-        if (!decodedData[1].eq(config.ethToTransfer)) {
-          console.error("ERROR: ETH amount mismatch!");
-          console.error(`Expected: ${ethers.utils.formatEther(config.ethToTransfer)}, Got: ${ethers.utils.formatEther(decodedData[1])}`);
-        }
-        
-        if (decodedData[2].toString() !== config.ltv.toString()) {
-          console.error("ERROR: LTV mismatch!");
-          console.error(`Expected: ${config.ltv}, Got: ${decodedData[2]}`);
-        }
-        
-        if (decodedData[3].toString() !== config.slippageBps.toString()) {
-          console.error("ERROR: Slippage BPS mismatch!");
-          console.error(`Expected: ${config.slippageBps}, Got: ${decodedData[3]}`);
-        }
       } catch (error) {
         console.error("Error decoding transaction data:", error.message);
-      }
-      
-      // Also decode the specific data string provided by the user
-      console.log("\nDEBUG: Decoding the specific data string provided by the user");
-      const userProvidedData = "0x7c281f7200000000000000000000000037adcff072f44bec0413029e7bfd785ca046714300000000000000000000000000000000000000000000000000038d7ea4c6800000000000000000000000000000000000000000000000000000000000000000320000000000000000000000000000000000000000000000000000000000000032";
-      
-      try {
-        const decodedUserData = leveragedLPManager.interface.decodeFunctionData("startStrategy", userProvidedData);
-        console.log("Decoded user-provided data:");
-        console.log("- Safe address:", decodedUserData[0]);
-        console.log("- ETH amount:", ethers.utils.formatEther(decodedUserData[1]), "ETH");
-        console.log("- LTV:", decodedUserData[2].toString());
-        console.log("- Slippage BPS:", decodedUserData[3].toString());
-      } catch (error) {
-        console.error("Error decoding user-provided data:", error.message);
       }
       
       const startStrategyTxData = {
