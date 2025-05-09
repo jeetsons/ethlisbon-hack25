@@ -146,6 +146,7 @@ contract LeveragedLPManagerTest is Test {
     uint256 public constant ETH_AMOUNT = 1 ether;
     uint256 public constant LTV = 50; // 50% LTV
     uint256 public constant USDC_BORROW_AMOUNT = ETH_AMOUNT * LTV / 100;
+    uint16 constant SLIPPAGE_BPS = 50; // 0.5% slippage
     uint24 public constant POOL_FEE = 3000; // 0.3%
     
     // Events for testing
@@ -215,7 +216,7 @@ contract LeveragedLPManagerTest is Test {
         emit StrategyStarted(safeWallet, 1, ETH_AMOUNT, USDC_BORROW_AMOUNT);
         
         // Start the strategy
-        manager.startStrategy(safeWallet, ETH_AMOUNT, LTV);
+        manager.startStrategy(safeWallet, ETH_AMOUNT, LTV, SLIPPAGE_BPS);
         
         // Check that the position was created
         (
@@ -245,13 +246,13 @@ contract LeveragedLPManagerTest is Test {
         
         // Expect the function to revert with the specific error message
         vm.expectRevert("LTV must be <= 75%");
-        manager.startStrategy(safeWallet, ETH_AMOUNT, invalidLTV);
+        manager.startStrategy(safeWallet, ETH_AMOUNT, invalidLTV, SLIPPAGE_BPS);
     }
     
     function testStartStrategyZeroAmount() public {
         // Test with zero ETH amount
         vm.expectRevert("ETH amount must be > 0");
-        manager.startStrategy(safeWallet, 0, LTV);
+        manager.startStrategy(safeWallet, 0, LTV, SLIPPAGE_BPS);
     }
     
     function testStartStrategyTwice() public {
@@ -264,7 +265,43 @@ contract LeveragedLPManagerTest is Test {
         vm.stopPrank();
         
         vm.expectRevert("Strategy already active");
-        manager.startStrategy(safeWallet, ETH_AMOUNT, LTV);
+        manager.startStrategy(safeWallet, ETH_AMOUNT, LTV, SLIPPAGE_BPS);
+    }
+    
+    function testStartStrategyWithSlippage() public {
+        // Approve tokens from the Safe wallet
+        vm.startPrank(safeWallet);
+        weth.approve(address(manager), ETH_AMOUNT);
+        vm.stopPrank();
+        
+        // Use a higher slippage value
+        uint16 highSlippage = 200; // 2% slippage
+        
+        // Expect the StrategyStarted event to be emitted
+        vm.expectEmit(true, true, false, true);
+        emit StrategyStarted(safeWallet, 1, ETH_AMOUNT, USDC_BORROW_AMOUNT);
+        
+        // Start the strategy with higher slippage
+        manager.startStrategy(safeWallet, ETH_AMOUNT, LTV, highSlippage);
+        
+        // Check that the position was created
+        (
+            address safe,
+            uint256 lpTokenId,
+            uint256 ethSupplied,
+            uint256 usdcBorrowed,
+            uint128 liquidity,
+            bool isActive
+        ) = manager.userPositions(safeWallet);
+        
+        // Verify the position details
+        assertEq(safe, safeWallet, "Safe wallet address mismatch");
+        assertEq(ethSupplied, ETH_AMOUNT, "ETH supplied amount mismatch");
+        assertEq(usdcBorrowed, USDC_BORROW_AMOUNT, "USDC borrowed amount mismatch");
+        assertTrue(isActive, "Position should be active");
+        
+        // Verify the LP token mapping
+        assertEq(manager.lpTokenToSafe(lpTokenId), safeWallet, "LP token to Safe mapping incorrect");
     }
     
     function testProcessFees() public {

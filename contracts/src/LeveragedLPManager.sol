@@ -163,8 +163,9 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
      * @param safe The address of the user's Gnosis Safe wallet
      * @param ethAmount The amount of ETH to supply as collateral
      * @param ltv The loan-to-value ratio for borrowing (as a percentage)
+     * @param slippageBps Slippage tolerance in basis points (e.g., 50 = 0.5%)
      */
-    function startStrategy(address safe, uint256 ethAmount, uint256 ltv) external nonReentrant {
+    function startStrategy(address safe, uint256 ethAmount, uint256 ltv, uint16 slippageBps) external nonReentrant {
         require(safe != address(0), "Invalid Safe address");
         require(ethAmount > 0, "ETH amount must be > 0");
         require(ltv > 0 && ltv <= MAX_LTV, "LTV must be <= 75%");
@@ -211,6 +212,10 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         minTick = (minTick / tickSpacing) * tickSpacing;
         maxTick = (maxTick / tickSpacing) * tickSpacing;
         
+        // Calculate minimum amounts based on slippage tolerance
+        uint256 amount0Min = usdcForLp - ((usdcForLp * slippageBps) / 10000);
+        uint256 amount1Min = ethFromSwap - ((ethFromSwap * slippageBps) / 10000);
+        
         // Mint the LP position
         IUniswapV4PositionManager.MintParams memory params = IUniswapV4PositionManager.MintParams({
             token0: usdc,
@@ -220,8 +225,8 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
             tickUpper: maxTick,
             amount0Desired: usdcForLp,
             amount1Desired: ethFromSwap,
-            amount0Min: minUsdcAmount,
-            amount1Min: minEthAmount,
+            amount0Min: amount0Min,
+            amount1Min: amount1Min,
             recipient: safe,  // Mint directly to the Safe wallet
             deadline: block.timestamp + 15 minutes
         });
