@@ -14,6 +14,10 @@ interface IAavePool {
     function repay(address asset, uint256 amount, uint256 interestRateMode, address onBehalfOf) external returns (uint256);
     function withdraw(address asset, uint256 amount, address to) external returns (uint256);
     function withdrawETH(uint256 amount, address to) external returns (uint256);
+    
+    // New functions for querying user data directly
+    function getUserDebt(address user, address asset, uint256 interestRateMode) external view returns (uint256);
+    function getUserCollateral(address user, address asset) external view returns (uint256);
 }
 
 // Interface for WETH
@@ -61,6 +65,23 @@ interface IUniswapV4PositionManager {
         uint256 amount1Min,
         uint256 deadline
     ) external returns (uint256 amount0, uint256 amount1);
+    
+    // Function to query position details
+    function positions(uint256 tokenId) external view returns (
+        address token0,
+        address token1,
+        uint24 fee,
+        int24 tickLower,
+        int24 tickUpper,
+        int24 tickCurrent,
+        uint128 feeGrowthInside0LastX128,
+        uint128 feeGrowthInside1LastX128,
+        uint128 liquidity,
+        uint256 feeGrowthOutside0X128,
+        uint256 feeGrowthOutside1X128,
+        uint256 tokensOwed0,
+        uint256 tokensOwed1
+    );
 }
 
 /**
@@ -75,9 +96,6 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
     struct UserPosition {
         address safe;
         uint256 lpTokenId;
-        uint256 ethSupplied;
-        uint256 usdcBorrowed;
-        uint128 liquidity;
         bool isActive;
     }
     
@@ -235,13 +253,10 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
             IUniswapV4PositionManager(positionManager).mint(params);
         
         // [7] Save position data
-        // Create the position in storage directly to avoid stack too deep errors
+        // Only store the minimal information needed
         UserPosition storage position = userPositions[safe];
         position.safe = safe;
         position.lpTokenId = tokenId;
-        position.ethSupplied = ethAmount;
-        position.usdcBorrowed = usdcToBorrow;
-        position.liquidity = liquidity;
         position.isActive = true;
         
         lpTokenToSafe[tokenId] = safe;
@@ -283,17 +298,19 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         
         // [1] Repay Aave USDC debt (on behalf of Safe)
         if (usdcAmount > 0) {
-            // Approve Aave to spend the USDC
-            IERC20(usdc).approve(aavePool, usdcAmount);
+            // Get the current debt from Aave directly
+            uint256 currentDebt = IAavePool(aavePool).getUserDebt(safe, usdc, INTEREST_RATE_MODE);
             
-            // Repay USDC debt
-            usdcProcessed = IAavePool(aavePool).repay(usdc, usdcAmount, INTEREST_RATE_MODE, safe);
-            
-            // Update the position's borrowed amount
-            if (position.usdcBorrowed > usdcProcessed) {
-                position.usdcBorrowed -= usdcProcessed;
+            if (currentDebt > 0) {
+                // Approve Aave to spend the USDC
+                IERC20(usdc).approve(aavePool, usdcAmount);
+                
+                // Repay USDC debt
+                usdcProcessed = IAavePool(aavePool).repay(usdc, usdcAmount, INTEREST_RATE_MODE, safe);
             } else {
-                position.usdcBorrowed = 0;
+                // If there's no debt, transfer USDC back to the Safe
+                IERC20(usdc).transfer(safe, usdcAmount);
+                usdcProcessed = usdcAmount;
             }
         }
         
@@ -305,9 +322,6 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
             // Supply ETH as additional collateral
             IAavePool(aavePool).supply(weth, ethAmount, safe, REFERRAL_CODE);
             ethProcessed = ethAmount;
-            
-            // Update the position's supplied amount
-            position.ethSupplied += ethProcessed;
         }
         
         emit FeesProcessed(safe, lpTokenId, usdcProcessed, ethProcessed);
@@ -329,10 +343,13 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         // Transfer the LP NFT from Safe to this contract temporarily
         IUniswapV4PositionManager(positionManager).safeTransferFrom(safe, address(this), lpTokenId);
         
-        // [2] Decrease liquidity from the position
+        // [2] Get position info from Uniswap
+        (, , , , , , , uint128 liquidity, , , , , ) = IUniswapV4PositionManager(positionManager).positions(lpTokenId);
+        
+        // Decrease liquidity from the position
         (uint256 amount0, uint256 amount1) = IUniswapV4PositionManager(positionManager).decreaseLiquidity(
             lpTokenId,
-            position.liquidity,  // Withdraw all liquidity
+            liquidity,  // Withdraw all liquidity
             0,  // Min USDC (we're unwinding, so accept any amount)
             0,  // Min ETH (we're unwinding, so accept any amount)
             block.timestamp + 15 minutes
@@ -349,58 +366,63 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         // [4] Transfer the LP NFT back to the Safe (it's now empty but still owned)
         IUniswapV4PositionManager(positionManager).safeTransferFrom(address(this), safe, lpTokenId);
         
-        // [5] Repay all USDC debt
-        uint256 usdcDebt = position.usdcBorrowed;
-        if (collectedUsdc >= usdcDebt) {
-            // We have enough USDC to repay the debt
-            IERC20(usdc).approve(aavePool, usdcDebt);
-            IAavePool(aavePool).repay(usdc, usdcDebt, INTEREST_RATE_MODE, safe);
-            usdcRepaid = usdcDebt;
-            
-            // Return any excess USDC to the Safe
-            uint256 usdcExcess = collectedUsdc - usdcDebt;
-            if (usdcExcess > 0) {
-                // Only transfer if there's a meaningful amount to transfer
-                if (usdcExcess > 1000) { // Small threshold to avoid dust transfers
-                    IERC20(usdc).transfer(safe, usdcExcess);
+        // [5] Query Aave for current USDC debt
+        uint256 usdcDebt = IAavePool(aavePool).getUserDebt(safe, usdc, INTEREST_RATE_MODE);
+        
+        if (usdcDebt > 0) {
+            if (collectedUsdc >= usdcDebt) {
+                // We have enough USDC to repay the debt
+                IERC20(usdc).approve(aavePool, usdcDebt);
+                IAavePool(aavePool).repay(usdc, usdcDebt, INTEREST_RATE_MODE, safe);
+                usdcRepaid = usdcDebt;
+                
+                // Return any excess USDC to the Safe
+                uint256 usdcExcess = collectedUsdc - usdcDebt;
+                if (usdcExcess > 0) {
+                    // Only transfer if there's a meaningful amount to transfer
+                    if (usdcExcess > 1000) { // Small threshold to avoid dust transfers
+                        IERC20(usdc).transfer(safe, usdcExcess);
+                    }
                 }
-            }
-        } else {
-            // Not enough USDC, use all collected USDC to repay part of the debt
-            IERC20(usdc).approve(aavePool, collectedUsdc);
-            IAavePool(aavePool).repay(usdc, collectedUsdc, INTEREST_RATE_MODE, safe);
-            usdcRepaid = collectedUsdc;
-            
-            // Calculate remaining debt
-            uint256 remainingDebt = usdcDebt - collectedUsdc;
-            
-            // Swap some ETH for USDC to repay the remaining debt
-            uint256 ethToSwap = (collectedEth * remainingDebt) / (collectedUsdc + remainingDebt);
-            if (ethToSwap > 0 && ethToSwap < collectedEth) {
-                IERC20(weth).approve(uniswapRouter, ethToSwap);
-                uint256 usdcFromSwap = IUniswapV4Router(uniswapRouter).exactInputSingle(
-                    weth,
-                    usdc,
-                    poolFee,
-                    address(this),
-                    ethToSwap,
-                    0,  // No minimum (we're unwinding)
-                    0   // No price limit
-                );
+            } else {
+                // Not enough USDC, use all collected USDC to repay part of the debt
+                IERC20(usdc).approve(aavePool, collectedUsdc);
+                IAavePool(aavePool).repay(usdc, collectedUsdc, INTEREST_RATE_MODE, safe);
+                usdcRepaid = collectedUsdc;
                 
-                // Repay the remaining debt with the swapped USDC
-                IERC20(usdc).approve(aavePool, usdcFromSwap);
-                IAavePool(aavePool).repay(usdc, usdcFromSwap, INTEREST_RATE_MODE, safe);
-                usdcRepaid += usdcFromSwap;
+                // Calculate remaining debt
+                uint256 remainingDebt = usdcDebt - collectedUsdc;
                 
-                // Update ETH amount
-                collectedEth -= ethToSwap;
+                // Swap some ETH for USDC to repay the remaining debt
+                uint256 ethToSwap = (collectedEth * remainingDebt) / (collectedUsdc + remainingDebt);
+                if (ethToSwap > 0 && ethToSwap < collectedEth) {
+                    IERC20(weth).approve(uniswapRouter, ethToSwap);
+                    uint256 usdcFromSwap = IUniswapV4Router(uniswapRouter).exactInputSingle(
+                        weth,
+                        usdc,
+                        poolFee,
+                        address(this),
+                        ethToSwap,
+                        0,  // Accept any amount of USDC
+                        0   // No price limit
+                    );
+                    
+                    // Repay additional USDC debt
+                    IERC20(usdc).approve(aavePool, usdcFromSwap);
+                    uint256 additionalRepaid = IAavePool(aavePool).repay(usdc, usdcFromSwap, INTEREST_RATE_MODE, safe);
+                    usdcRepaid += additionalRepaid;
+                    
+                    // Update ETH amount
+                    collectedEth -= ethToSwap;
+                }
             }
         }
         
-        // [6] Withdraw all ETH collateral
-        uint256 ethCollateral = position.ethSupplied;
-        IAavePool(aavePool).withdraw(weth, ethCollateral, address(this));
+        // [6] Query Aave for ETH collateral and withdraw it
+        uint256 ethCollateral = IAavePool(aavePool).getUserCollateral(safe, weth);
+        if (ethCollateral > 0) {
+            IAavePool(aavePool).withdraw(weth, ethCollateral, address(this));
+        }
         
         // [7] Return all ETH to the Safe
         // Make sure we don't try to transfer more than we have
@@ -421,16 +443,13 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
     /**
      * @dev Get the user's position details
      * @param safe The address of the user's Gnosis Safe wallet
-     * @return The user's position details
+     * @return The user's position details (safe address, LP token ID, active status)
      */
-    function getUserPosition(address safe) external view returns (address, uint256, uint256, uint256, uint128, bool) {
+    function getUserPosition(address safe) external view returns (address, uint256, bool) {
         UserPosition storage position = userPositions[safe];
         return (
             position.safe,
             position.lpTokenId,
-            position.ethSupplied,
-            position.usdcBorrowed,
-            position.liquidity,
             position.isActive
         );
     }
