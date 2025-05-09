@@ -329,8 +329,9 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
     /**
      * @dev Exit the strategy and unwind all positions
      * @param safe The address of the user's Gnosis Safe wallet
+     * @param swapEthForDebt Whether to swap ETH for USDC to repay remaining debt
      */
-    function exitStrategy(address safe) external nonReentrant {
+    function exitStrategy(address safe, bool swapEthForDebt) external nonReentrant {
         UserPosition storage position = userPositions[safe];
         require(position.safe != address(0), "No active strategy");
         
@@ -404,28 +405,32 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
                 // Calculate remaining debt
                 uint256 remainingDebt = usdcDebt - collectedUsdc;
                 
-                // Swap some ETH for USDC to repay the remaining debt
-                uint256 ethToSwap = (collectedEth * remainingDebt) / (collectedUsdc + remainingDebt);
-                if (ethToSwap > 0 && ethToSwap < collectedEth) {
-                    IERC20(weth).approve(uniswapRouter, ethToSwap);
-                    uint256 usdcFromSwap = IUniswapV4Router(uniswapRouter).exactInputSingle(
-                        weth,
-                        usdc,
-                        poolFee,
-                        address(this),
-                        ethToSwap,
-                        0,  // Accept any amount of USDC
-                        0   // No price limit
-                    );
-                    
-                    // Repay additional USDC debt
-                    IERC20(usdc).approve(aavePool, usdcFromSwap);
-                    uint256 additionalRepaid = IAavePool(aavePool).repay(usdc, usdcFromSwap, INTEREST_RATE_MODE, safe);
-                    usdcRepaid += additionalRepaid;
-                    
-                    // Update ETH amount
-                    collectedEth -= ethToSwap;
+                // Only swap ETH for USDC if the user opted for it
+                if (swapEthForDebt) {
+                    // Swap some ETH for USDC to repay the remaining debt
+                    uint256 ethToSwap = (collectedEth * remainingDebt) / (collectedUsdc + remainingDebt);
+                    if (ethToSwap > 0 && ethToSwap < collectedEth) {
+                        IERC20(weth).approve(uniswapRouter, ethToSwap);
+                        uint256 usdcFromSwap = IUniswapV4Router(uniswapRouter).exactInputSingle(
+                            weth,
+                            usdc,
+                            poolFee,
+                            address(this),
+                            ethToSwap,
+                            0,  // Accept any amount of USDC
+                            0   // No price limit
+                        );
+                        
+                        // Repay additional USDC debt
+                        IERC20(usdc).approve(aavePool, usdcFromSwap);
+                        uint256 additionalRepaid = IAavePool(aavePool).repay(usdc, usdcFromSwap, INTEREST_RATE_MODE, safe);
+                        usdcRepaid += additionalRepaid;
+                        
+                        // Update ETH amount
+                        collectedEth -= ethToSwap;
+                    }
                 }
+                // If user opted not to swap, they'll handle the remaining debt separately
             }
         }
         

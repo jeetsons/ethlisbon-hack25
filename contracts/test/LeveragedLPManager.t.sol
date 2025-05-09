@@ -445,7 +445,8 @@ contract LeveragedLPManagerTest is Test {
         positionManager.setPositionLiquidity(lpTokenId, 1000);
         
         // Exit the strategy - we don't check the event emission since the exact values may vary
-        manager.exitStrategy(safeWallet);
+        // Test with swapEthForDebt = true to ensure full debt repayment
+        manager.exitStrategy(safeWallet, true);
         
         // Manually update the mock Aave values to simulate what would happen in the real contract
         // In the real contract, these values would be updated by the Aave protocol
@@ -474,7 +475,7 @@ contract LeveragedLPManagerTest is Test {
         address noStrategySafe = makeAddr("noStrategySafe");
         
         vm.expectRevert("No active strategy");
-        manager.exitStrategy(noStrategySafe);
+        manager.exitStrategy(noStrategySafe, true);
     }
     
     function testGetUserPosition() public {
