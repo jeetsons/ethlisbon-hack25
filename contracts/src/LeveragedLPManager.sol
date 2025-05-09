@@ -343,7 +343,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         IUniswapV4PositionManager(positionManager).safeTransferFrom(safe, address(this), lpTokenId);
         
         // [2] Get position info from Uniswap
-        (, , , , , , , uint128 liquidity, , , , , ) = IUniswapV4PositionManager(positionManager).positions(lpTokenId);
+        (address token0, address token1, , , , , , uint128 liquidity, , , , , ) = IUniswapV4PositionManager(positionManager).positions(lpTokenId);
         
         // Decrease liquidity from the position
         (uint256 amount0, uint256 amount1) = IUniswapV4PositionManager(positionManager).decreaseLiquidity(
@@ -355,12 +355,24 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         );
         
         // [3] Collect all tokens from the position
-        (uint256 collectedUsdc, uint256 collectedEth) = IUniswapV4PositionManager(positionManager).collect(
+        (uint256 collected0, uint256 collected1) = IUniswapV4PositionManager(positionManager).collect(
             lpTokenId,
             address(this),
-            type(uint128).max,  // Collect all USDC
-            type(uint128).max   // Collect all ETH
+            type(uint128).max,  // Collect all token0
+            type(uint128).max   // Collect all token1
         );
+        
+        // Determine which token is USDC and which is WETH based on token addresses
+        uint256 collectedUsdc;
+        uint256 collectedEth;
+        
+        if (token0 == usdc) {
+            collectedUsdc = amount0 + collected0;
+            collectedEth = amount1 + collected1;
+        } else {
+            collectedUsdc = amount1 + collected1;
+            collectedEth = amount0 + collected0;
+        }
         
         // [4] Transfer the LP NFT back to the Safe (it's now empty but still owned)
         IUniswapV4PositionManager(positionManager).safeTransferFrom(address(this), safe, lpTokenId);
