@@ -149,20 +149,46 @@ contract LeveragedLPManager is IERC721Receiver {
     function startStrategy(address safe, uint256 ethAmount, uint256 ltv) external {
         require(!userPositions[safe].isActive, "Strategy already active");
         // [0] PRECONDITION: This contract must be approved by Safe to move ETH/USDC and mint LP
+
         // [1] Supply ETH to Aave
         // IAavePool(aavePool).supply{value: ethAmount}(weth, ethAmount, safe, 0);
+
         // [2] Borrow USDC against ETH collateral
-        // uint256 usdcToBorrow = ethAmount * ltv / 100;
+        uint256 usdcToBorrow = (ethAmount * ltv) / 100;
         // IAavePool(aavePool).borrow(usdc, usdcToBorrow, 2, 0, safe);
-        // [3] Mint Uniswap V4 full-range LP (actual params depend on Uniswap interface)
+
+        // [3] Swap 50% of USDC for ETH using Uniswap
+        uint256 usdcToSwap = usdcToBorrow / 2;
+
+        // Approve Uniswap router to spend USDC
+        // IERC20(usdc).approve(uniswapRouter, usdcToSwap);
+
+        // Pseudocode for Uniswap swap (V4 router is still evolving, so assume a router interface):
+        // address[] memory path = new address[](2);
+        // path[0] = usdc;
+        // path[1] = weth;
+        // uint256 minETH = ...; // Set slippage protection (e.g., via off-chain quote/API)
+        // IUniswapRouter(uniswapRouter).swapExactTokensForETH(
+        //      usdcToSwap,
+        //      minETH,
+        //      path,
+        //      address(this),
+        //      block.timestamp + 15 minutes
+        // );
+        // For hackathon, you may call Uniswap's off-chain API for a quote, then construct the calldata for the on-chain router.
+        // After swap, contract will have `usdcToBorrow/2` USDC and the swapped ETH.
+
+        // [4] Mint Uniswap V4 full-range LP (using both USDC and ETH)
         // (uint256 lpTokenId, , , ) = IUniswapV4PositionManager(positionManager).mint(...);
         uint256 fakeLpTokenId = 123; // Placeholder for minted tokenId
-        // [4] Transfer LP NFT to Safe
+
+        // [5] Transfer LP NFT to Safe
         // IUniswapV4PositionManager(positionManager).safeTransferFrom(address(this), safe, lpTokenId);
-        // [5] Save position data
-        userPositions[safe] = UserPosition(safe, fakeLpTokenId, ethAmount, (ethAmount * ltv) / 100, true);
+
+        // [6] Save position data
+        userPositions[safe] = UserPosition(safe, fakeLpTokenId, ethAmount, usdcToBorrow, true);
         lpTokenToSafe[fakeLpTokenId] = safe;
-        emit StrategyStarted(safe, ethAmount, (ethAmount * ltv) / 100, fakeLpTokenId);
+        emit StrategyStarted(safe, ethAmount, usdcToBorrow, fakeLpTokenId);
     }
 
     // 2. Called by the hook after every 10th trade to process collected fees
