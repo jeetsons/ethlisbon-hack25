@@ -41,15 +41,16 @@ contract DeployScript is Script {
             WETH
         );
         
+        // Update the hook address in the manager using the new setFeeHook function
+        manager.setFeeHook(address(hook));
+        
         // Authorize the Uniswap V4 pool to use the hook
         // Note: You'll need to authorize each pool that will use this hook
         // This is just an example for the ETH/USDC pool with the specified fee tier
         bytes32 poolKey = keccak256(abi.encode(WETH, USDC, POOL_FEE));
         hook.setPoolAuthorization(address(uint160(uint256(poolKey))), true);
         
-        // We would need a way to update the hook address in the manager
-        // This would require adding a function to the LeveragedLPManager contract
-        // For now, we'll just transfer ownership of the hook to the manager
+        // Transfer ownership of the hook to the manager for proper access control
         hook.transferOwnership(address(manager));
         
         vm.stopBroadcast();

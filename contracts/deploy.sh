@@ -3,6 +3,10 @@
 # Load environment variables
 source .env
 
+# Rebuild the contracts
+echo "Building contracts..."
+forge build
+
 # Run the deployment script
 echo "Running deployment script..."
 forge script script/Deploy.s.sol:DeployScript \
