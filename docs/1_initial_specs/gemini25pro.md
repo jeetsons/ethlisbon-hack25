@@ -426,11 +426,11 @@ Key Logic: The hook needs a way to identify the specific LP position and its own
 ## 5. Safe Integration
 1/1 Safe Model: Each user operates through their own Gnosis Safe (1 owner, 1 threshold).
 Safe{Core} SDK: The frontend uses this SDK to:
-Facilitate Safe creation/connection.
-Construct and propose multi-send transactions for all key user flows (initiation, closing).
-Facilitate standard token transfers from the Safe (e.g., final withdrawal to EOA).
-Ownership: The User's Safe is the direct owner of Aave aTokens and the Uniswap V4 LP NFT.
-Permissions:
+**Facilitate Safe creation/connection.
+**Construct and propose multi-send transactions for all key user flows (initiation, closing).
+**Facilitate standard token transfers from the Safe (e.g., final withdrawal to EOA).
+**Ownership: The User's Safe is the direct owner of Aave aTokens and the Uniswap V4 LP NFT.
+**Permissions:
 User's Safe approves MainLogicContract for Aave borrow delegation and on-behalf-of actions (repay/supply).
 User's Safe approves HookContract to collect fees from its Uniswap LP NFT.
 
