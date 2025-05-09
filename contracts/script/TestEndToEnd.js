@@ -1,8 +1,13 @@
 // TestEndToEnd.js - Script to test the end-to-end flow with Gnosis Safe
-const { ethers } = require('ethers');
+require('dotenv').config();
+const { getSafeAddressFromDeploymentTx } = require('@safe-global/protocol-kit');
+const ethers = require('ethers');
 const Safe = require('@safe-global/protocol-kit').default;
 const SafeApiKit = require('@safe-global/api-kit').default;
 const EthersAdapter = require('@safe-global/protocol-kit').EthersAdapter;
+
+const { SafeFactory } = require('@safe-global/protocol-kit');
+
 
 // Contract ABIs - You'll need to replace these with the actual ABIs
 const LeveragedLPManagerABI = require('../out/LeveragedLPManager.sol/LeveragedLPManager.json').abi;
@@ -34,13 +39,23 @@ const config = {
 async function main() {
   try {
     // Get private key from command line args or environment
-    const privateKey = process.argv[2] || process.env.PRIVATE_KEY;
+    const privateKey = process.argv[2] || process.env.PRIVATE_KEY_E2E;
     if (!privateKey) {
-      throw new Error("Private key is required. Pass it as an argument or set PRIVATE_KEY env variable.");
+      throw new Error("Private key is required. Pass it as an argument or set PRIVATE_KEY_E2E env variable.");
     }
 
     // Set up provider and signer
+    console.log(`Connecting to network: ${config.rpcUrl}`);
     const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
+    
+    // Verify the network
+    const network = await provider.getNetwork();
+    console.log(`Connected to network: ${network.name} (Chain ID: ${network.chainId})`);
+    
+    if (network.chainId !== 8453) {
+      console.warn(`WARNING: Expected Base network (Chain ID: 8453), but connected to Chain ID: ${network.chainId}`);
+    }
+    
     const signer = new ethers.Wallet(privateKey, provider);
     const signerAddress = await signer.getAddress();
     
@@ -58,28 +73,29 @@ async function main() {
       ethAdapter
     });
 
-    // Initialize Safe SDK
-    const safeSdk = await Safe.create({
-      ethAdapter,
-      safeAddress: ethers.constants.AddressZero, // Will be replaced when we create or load a Safe
-    });
 
     // Create a new Safe
     console.log("Creating a new Safe...");
+    
+    const safeDeploymentConfig = {
+      saltNonce: Date.now().toString(),
+      safeVersion: '1.3.0'
+    };
+
+    const safeFactory = await SafeFactory.create({ ethAdapter })
+
     const safeAccountConfig = {
       owners: [signerAddress],
       threshold: 1,
-    };
+    }
     
-    const safeDeploymentConfig = {
-      saltNonce: Date.now().toString()
-    };
+    // 5. Deploy the Safe
+    const safeSdk = await safeFactory.deploySafe({ safeAccountConfig })
     
-    const safeSdkForDeployment = await safeSdk.createSafe({ safeAccountConfig, safeDeploymentConfig });
-    const newSafeAddress = await safeSdkForDeployment.getAddress();
-    
-    console.log(`Safe created at address: ${newSafeAddress}`);
-    
+    // 6. Get the address of the newly deployed Safe
+    const newSafeAddress = await safeSdk.getAddress()
+    console.log('Deployed Safe address:', newSafeAddress)
+
     // Fund the Safe with ETH
     console.log(`Sending ${ethers.utils.formatEther(config.ethToTransfer)} ETH to Safe...`);
     const tx = await signer.sendTransaction({
