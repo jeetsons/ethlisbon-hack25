@@ -1,6 +1,9 @@
-# DeFi Safe Leveraged LP – Hackathon Spec (Full Version)
+# DeFi Safe Leveraged LP – Hackathon Spec (Full Version, Gnosis Pay Version)
 
 *For Junior Developers: This document will walk you through everything step-by-step, including why, how, and what to code. It’s designed for hackathon speed and clarity!*
+
+**Wallet Onboarding & Management:**  
+_All user onboarding, wallet creation, connection, and contract approvals must be performed using **Gnosis Pay** (which creates and manages Gnosis Safe wallets underneath). All user flows, UI, and code should reference Gnosis Pay, not generic wallet providers._
 
 ---
 
@@ -23,7 +26,7 @@
 ## 1. Overview & User Journey
 
 **Goal:**  
-Allow a user to create a Safe wallet, deposit ETH, and—using a smart contract—automate:
+Allow a user to create a Gnosis Pay wallet (Gnosis Safe), deposit ETH, and—using a smart contract—automate:
 - Supplying ETH as collateral to Aave V3,
 - Borrowing USDC,
 - Creating a full-range USDC/ETH liquidity position on Uniswap V4,
@@ -31,11 +34,26 @@ Allow a user to create a Safe wallet, deposit ETH, and—using a smart contract�
 
 **Typical Flow:**
 
-1. **User connects to the dApp** and creates a new Safe wallet (1/1, i.e., only they control it).
-2. **User deposits ETH** into their Safe wallet.
-3. **User starts the strategy:** the contract (with the Safe’s permission) deposits ETH into Aave, borrows USDC, and creates the LP on Uniswap.
-4. **Uniswap V4 Hook:** every 10 trades, the hook collects fees from the LP NFT (held by the Safe), and the contract repays USDC debt and tops up ETH collateral using these fees.
-5. **User can exit at any time:** the contract unwinds everything and returns assets to the Safe.
+1. **User connects to the dApp via Gnosis Pay** and creates a new Gnosis Pay wallet (Gnosis Safe, 1/1, i.e., only they control it).
+2. **User deposits ETH** into their Gnosis Pay wallet.
+3. **User starts the strategy:** the contract (with the Gnosis Pay wallet’s permission) deposits ETH into Aave, borrows USDC, and creates the LP on Uniswap.
+4. **Uniswap V4 Hook:** every 10 trades, the hook collects fees from the LP NFT (held by the Gnosis Pay wallet), and the contract repays USDC debt and tops up ETH collateral using these fees.
+5. **User can exit at any time:** the contract unwinds everything and returns assets to the Gnosis Pay wallet.
+
+**Goal:**  
+Allow a user to create a **Gnosis Pay** account (backed by a Gnosis Safe wallet), deposit ETH, and—using a smart contract—automate:
+- Supplying ETH as collateral to Aave V3,
+- Borrowing USDC,
+- Creating a full-range USDC/ETH liquidity position on Uniswap V4,
+- Using a Uniswap V4 "hook" to automate fee collection: on every 10th trade, collected fees are used to repay Aave debt (USDC) and add more ETH as collateral (if any).
+
+**Typical Flow:**
+
+1. **User connects to the dApp via Gnosis Pay** and creates a new Gnosis Pay wallet (which is a Gnosis Safe under the hood).
+2. **User deposits ETH** into their Gnosis Pay wallet.
+3. **User starts the strategy:** the contract (with the Gnosis Pay wallet’s permission) deposits ETH into Aave, borrows USDC, and creates the LP on Uniswap.
+4. **Uniswap V4 Hook:** every 10 trades, the hook collects fees from the LP NFT (held by the Gnosis Pay wallet), and the contract repays USDC debt and tops up ETH collateral using these fees.
+5. **User can exit at any time:** the contract unwinds everything and returns assets to the Gnosis Pay wallet.
 
 ---
 
@@ -324,57 +342,94 @@ await nftContract.approve(feeCollectHookAddress, lpTokenId); // Or setApprovalFo
 
 ---
 
-## 9. UI Pages & Screens Needed
+## 8. What is Gnosis Pay? Why Do We Use It?
 
-For a smooth user journey, you should implement the following UI screens/pages. This will help your junior dev break down frontend work and ensure nothing is missed.
+**Gnosis Pay** is a smart contract wallet solution built on top of Gnosis Safe, offering a modern, user-friendly, and secure wallet experience.  
+- **Key Points for Developers:**
+  - It gives users a “bank-like” experience on-chain (including card and payment features) but all user assets are actually held in a Gnosis Safe smart contract wallet.
+  - For our dApp, **Gnosis Pay handles all wallet creation, funding, and approval logic.** Your users will interact with your dApp through their Gnosis Pay wallet.
+  - **Why do we use Gnosis Pay?**
+    - Easier onboarding for non-crypto users (social login, fiat onramp, etc.).
+    - Out-of-the-box 1/1 Safe wallet management (no manual contract wallet deployment).
+    - Strong security model: all assets, LP NFTs, and DeFi positions are always under the user’s Safe (Gnosis Pay) wallet.
+
+**As a developer:**  
+- When the user “Connects Wallet” or “Creates Wallet,” you are prompting them to use Gnosis Pay to manage their Gnosis Safe wallet.
+- All contract interactions, approvals, and DeFi logic must be initiated by or approved through the Gnosis Pay wallet.
+- **Do NOT let users use MetaMask, WalletConnect, or other EOAs for this flow!**  
+  This MVP is designed *only* for Gnosis Pay wallets.
+
+---
+
+## 9. UI Pages & Screens Needed (Gnosis Pay, Gnosis Safe, and General Wallet Context)
+
+For a smooth user journey, you should implement the following UI screens/pages.  
+**This breakdown includes extra context and comments for junior developers, and describes how Gnosis Pay (built on Gnosis Safe) fits into the user experience.**
+
+---
 
 ### 1. **Landing Page / Connect Wallet**
-- **Purpose:** Welcome user, let them connect their standard wallet (e.g., MetaMask).
+- **Purpose:** Welcome user, let them connect their wallet **via Gnosis Pay** (which creates and manages Gnosis Safe wallets for them).
 - **Core elements:**
-  - "Connect Wallet" button (show current address if connected).
+  - "Connect with Gnosis Pay" button (show Gnosis Pay account or Gnosis Safe address after connection).
+  - *Tip:* Gnosis Pay provides a familiar, Web2-like onboarding for users, abstracting away direct contract interactions. All user funds and contract actions are managed through their Gnosis Safe wallet, provisioned by Gnosis Pay.
   - Brief intro to the dApp and what it does.
 
-### 2. **Safe Wallet Creation Page**
-- **Purpose:** Guide user to create a Safe (1/1 owner) if they don’t already have one.
-- **Core elements:**
-  - Button: "Create Safe Wallet"
-  - Show Safe address after creation.
-  - Option to “Select Existing Safe” if already created.
+---
 
-### 3. **Safe Funding Page**
-- **Purpose:** Let user deposit ETH into their Safe.
+### 2. **Gnosis Pay (Gnosis Safe) Wallet Creation Page**
+- **Purpose:** Guide user to create a **Gnosis Pay account** (which is a Gnosis Safe wallet under the hood) if they don’t have one already.
 - **Core elements:**
-  - Display Safe address and ETH balance.
+  - Button: "Create Gnosis Pay Account"
+  - After creation, show the resulting Gnosis Safe wallet address on Base.
+  - Option to “Select Existing Gnosis Pay Wallet” if already created or imported.
+  - *Tip for devs:* Gnosis Pay may handle the wallet creation flow natively, so your frontend often just triggers their SDK’s onboarding modal.
+
+---
+
+### 3. **Gnosis Pay Wallet Funding Page**
+- **Purpose:** Let user deposit ETH into their Gnosis Pay wallet (Gnosis Safe).
+- **Core elements:**
+  - Display Gnosis Pay wallet address and ETH balance on Base.
   - Input field for deposit amount.
   - "Deposit ETH" button.
   - Transaction status (pending/success/fail).
+  - *Tip:* If Gnosis Pay provides fiat onramps, you can link to those here.
+
+---
 
 ### 4. **Strategy Setup & Approval Page**
-- **Purpose:** Prepare user for strategy start, handle all contract approvals.
+- **Purpose:** Prepare user for starting the strategy, and handle all contract approvals via their Gnosis Pay wallet.
 - **Core elements:**
   - List required approvals:
-    - Approve LeveragedLPManager for Safe's ETH/USDC and future Uniswap LP NFT.
-    - Approve FeeCollectHook for LP NFT (after it is minted).
-  - Buttons to trigger each approval (show status of each).
-  - Safety tips: Explain why each approval is needed.
-  - Only allow strategy start after all approvals are done.
+    - Approve `LeveragedLPManager` for wallet's ETH/USDC and the future Uniswap LP NFT.
+    - Approve `FeeCollectHook` for LP NFT (after it is minted).
+  - Buttons to trigger each approval and show status (pending/complete).
+  - Safety tips: Explain why each approval is needed (e.g., "The fee hook needs permission to collect fees from your liquidity position").
+  - Only allow strategy start after all approvals are confirmed.
+
+---
 
 ### 5. **Start Strategy Page**
-- **Purpose:** Let user start the DeFi strategy (deposit, borrow, LP mint).
+- **Purpose:** Let user start the DeFi strategy (deposit, borrow, LP mint) directly from their Gnosis Pay wallet.
 - **Core elements:**
-  - Display current Safe balances.
+  - Display wallet balances (ETH, USDC, etc.).
   - Form/input to choose "Deposit Amount" and "Leverage" (LTV).
   - Button: "Start Strategy"
-  - Show transaction status and resulting LP NFT ID.
+  - Show transaction status and the resulting LP NFT ID (display confirmation once strategy is live).
+
+---
 
 ### 6. **Dashboard / Monitoring Page**
 - **Purpose:** Show current strategy status and key metrics.
 - **Core elements:**
-  - Safe balances: ETH, USDC, aETH, LP NFT status.
+  - Gnosis Pay wallet balances: ETH, USDC, aETH, LP NFT status.
   - Aave health factor, borrowed USDC, remaining debt.
   - LP position stats: accrued fees, trade count toward next fee collection.
   - Event/activity log (showing recent contract events).
   - Button: "Exit & Unwind" (visible if strategy active).
+
+---
 
 ### 7. **Fee Automation Status Page**
 - **Purpose:** Explain and visualize fee collection automation.
@@ -384,12 +439,16 @@ For a smooth user journey, you should implement the following UI screens/pages. 
   - Next scheduled collection (after 10 trades).
   - Status of FeeCollectHook contract (approved? collecting?).
 
+---
+
 ### 8. **Exit/Unwind Confirmation Page**
-- **Purpose:** Let user confirm and execute full unwind of their strategy.
+- **Purpose:** Let user confirm and execute full unwind of their strategy via their Gnosis Pay wallet.
 - **Core elements:**
   - Summary of current position and what will happen on exit.
   - Button: "Exit & Withdraw All"
-  - Transaction progress and final balances returned to Safe.
+  - Transaction progress and final balances returned to Gnosis Pay wallet.
+
+---
 
 ### 9. **Error & Troubleshooting Page/Modal**
 - **Purpose:** Display clear errors and next steps.
@@ -400,25 +459,34 @@ For a smooth user journey, you should implement the following UI screens/pages. 
 ---
 
 **Notes for Junior Dev:**
-- All pages should clearly show current wallet and Safe addresses.
-- Loading indicators and status feedback are important for all transactions.
+- All pages should clearly show both the current EOA (if present) and Gnosis Pay wallet (Gnosis Safe) addresses.
+- Loading indicators and transaction feedback are crucial—users should always know what's happening.
 - Use a router/navigation bar for easy switching between screens.
-- Event-driven updates (listen for contract events!) help keep UI live and responsive.
+- Event-driven updates (listen for contract events!) keep your UI live and responsive.
+- **All onboarding, funding, and approvals must use Gnosis Pay’s UI/SDK. If using WalletKit or another connector, ensure it is Gnosis Pay compatible.**
+- *Reminder:* Gnosis Pay abstracts Safe wallet creation/management into a streamlined experience, but under the hood, you are always interacting with a Gnosis Safe on the Base network.
 
 ---
 
 ## 10. Libraries & Frameworks Used
 
-For this MVP, use the following libraries and frameworks for a smooth developer and user experience:
+For this MVP, use the following libraries and frameworks.  
+**This section provides extra context on how Gnosis Pay and Gnosis Safe relate, and gives options for wallet providers.**
 
-- **WalletKit**  
-  *Wallet connection provider for React and web apps. Handles multi-wallet support, network switching, and is recommended for onboarding users to Safe and Base.*
-  - [WalletKit Docs](https://github.com/rainbow-me/walletkit)
-  - Use WalletKit to connect user's EOA and guide them to Base (network ID 8453).
+- **Gnosis Pay SDK** (or official wallet connection modules)
+  - *Primary wallet provider and onboarding toolkit. All user actions and funds are managed via Gnosis Pay, which provisions and maintains a Gnosis Safe wallet for each user on Base.*
+  - [Gnosis Pay Developer Docs](https://docs.gnosis.pay/) *(replace with actual link when available)*
+  - *Frontend Integration Tip:* Use the Gnosis Pay SDK to connect wallets, create accounts, and manage Safe-based transactions. This should be the default path for users.
 
-- **Safe{Core} SDK**  
-  *For Safe wallet creation, transaction batching, and approvals.*
+- **Gnosis Safe{Core} SDK**  
+  *For low-level Gnosis Safe wallet management, transaction batching, and approvals (used internally by Gnosis Pay and, where needed, directly in dApp logic).*
   - [Safe{Core} SDK Docs](https://docs.safe.global/)
+  - *Dev Note:* You typically do not need to interact with Safe{Core} directly unless customizing advanced wallet features.
+
+- **WalletKit** (optional, only if compatible with Gnosis Pay)
+  - *Can be used for wallet connection UI and network switching. If used, make sure it supports Gnosis Pay accounts and Gnosis Safe wallets on Base.*
+  - [WalletKit Docs](https://github.com/rainbow-me/walletkit)
+  - *If not compatible, rely exclusively on Gnosis Pay SDK for wallet connections.*
 
 - **Aave V3 SDK / Interfaces**  
   *For contract calls to supply/borrow on Aave.*
@@ -439,15 +507,24 @@ For this MVP, use the following libraries and frameworks for a smooth developer 
 
 ---
 
+**Quick Reference for Junior Devs:**
+- **Gnosis Pay** = user-friendly onboarding and payments UI, always creates a Gnosis Safe wallet for the user.
+- **Gnosis Safe** = smart contract wallet on Base, owned and managed *through* Gnosis Pay.
+- **Safe{Core} SDK** = low-level toolkit for Safe wallets; Gnosis Pay SDK may use this under the hood.
+- **WalletKit** = general wallet connector, only use if it supports Gnosis Pay.
+- **All user assets and contract actions are performed through the Gnosis Safe wallet, with Gnosis Pay providing the interface.**
+
+---
+
 ## 11. Network: Base Only (network ID 8453)
 
 > **Important:**  
 > This MVP is to be built and tested **only on the Base blockchain** (network ID 8453).
 
 - **All contract deployments** should target Base.
-- **All frontend wallet connections** (via WalletKit or other providers) must default to and require Base.
+- **All frontend wallet connections** (via Gnosis Pay SDK, or WalletKit if compatible) must default to and require Base.
 - **All addresses, faucets, and test scripts** should use Base-compatible endpoints.
-- Ensure all Safe, Aave, and Uniswap addresses and parameters are set for Base.
+- Ensure all Gnosis Pay, Gnosis Safe, Aave, and Uniswap addresses and parameters are set for Base.
 
 ---
 
@@ -457,3 +534,149 @@ For this MVP, use the following libraries and frameworks for a smooth developer 
 ---
 
 **Hand this doc to any junior dev and they should be able to start building! If you have questions, check the links above or reach out to your technical lead. Good luck at your hackathon! 🚀**
+
+For a smooth user journey, you should implement the following UI screens/pages, tailored for **Gnosis Pay** (which uses Gnosis Safe wallets under the hood):
+
+### 1. **Landing Page / Connect Gnosis Pay Wallet**
+- **Purpose:** Welcome user, let them connect via Gnosis Pay.
+- **Core elements:**
+  - "Connect with Gnosis Pay" button (show current Gnosis Pay account if connected).
+  - Brief intro to the dApp and what it does.
+
+### 2. **Gnosis Pay Wallet Creation Page**
+- **Purpose:** Guide user to create a Gnosis Pay account (Gnosis Safe wallet) if they don’t already have one.
+- **Core elements:**
+  - Button: "Create Gnosis Pay Account"
+  - Show Safe wallet address after creation.
+  - Option to “Select Existing Gnosis Pay Wallet” if already created.
+
+### 3. **Gnosis Pay Wallet Funding Page**
+- **Purpose:** Let user deposit ETH into their Gnosis Pay wallet.
+- **Core elements:**
+  - Display Gnosis Pay wallet address and ETH balance.
+  - Input field for deposit amount.
+  - "Deposit ETH" button.
+  - Transaction status (pending/success/fail).
+
+### 4. **Strategy Setup & Approval Page**
+- **Purpose:** Prepare user for strategy start, handle all contract approvals via Gnosis Pay.
+- **Core elements:**
+  - List required approvals:
+    - Approve LeveragedLPManager for wallet's ETH/USDC and future Uniswap LP NFT.
+    - Approve FeeCollectHook for LP NFT (after it is minted).
+  - Buttons to trigger each approval (show status).
+  - Safety tips: Explain why each approval is needed.
+  - Only allow strategy start after all approvals are done.
+
+### 5. **Start Strategy Page**
+- **Purpose:** Let user start the DeFi strategy (deposit, borrow, LP mint).
+- **Core elements:**
+  - Display Gnosis Pay wallet balances.
+  - Form/input to choose "Deposit Amount" and "Leverage" (LTV).
+  - Button: "Start Strategy"
+  - Show transaction status and resulting LP NFT ID.
+
+### 6. **Dashboard / Monitoring Page**
+- **Purpose:** Show current strategy status and key metrics.
+- **Core elements:**
+  - Gnosis Pay wallet balances: ETH, USDC, aETH, LP NFT status.
+  - Aave health factor, borrowed USDC, remaining debt.
+  - LP position stats: accrued fees, trade count toward next fee collection.
+  - Event/activity log (showing recent contract events).
+  - Button: "Exit & Unwind" (visible if strategy active).
+
+### 7. **Fee Automation Status Page**
+- **Purpose:** Explain and visualize fee collection automation.
+- **Core elements:**
+  - Progress bar or counter: “Trades since last fee collection.”
+  - Last fees collected (amounts, timestamp).
+  - Next scheduled collection (after 10 trades).
+  - Status of FeeCollectHook contract (approved? collecting?).
+
+### 8. **Exit/Unwind Confirmation Page**
+- **Purpose:** Let user confirm and execute full unwind of their strategy.
+- **Core elements:**
+  - Summary of current position and what will happen on exit.
+  - Button: "Exit & Withdraw All"
+  - Transaction progress and final balances returned to Gnosis Pay wallet.
+
+### 9. **Error & Troubleshooting Page/Modal**
+- **Purpose:** Display clear errors and next steps.
+- **Core elements:**
+  - Catch missing approvals, failed transactions, or on-chain errors.
+  - Guidance for user to retry or seek help.
+
+---
+
+**Notes for Junior Dev:**
+- All pages should clearly show current wallet and Gnosis Pay wallet addresses.
+- Loading indicators and status feedback are important for all transactions.
+- Use a router/navigation bar for easy switching between screens.
+- Event-driven updates (listen for contract events!) help keep UI live and responsive.
+- All onboarding, funding, and approvals must use Gnosis Pay’s UI/SDK.
+
+---
+
+## 10. Libraries & Frameworks Used (with Gnosis Pay)
+
+For this MVP, use the following libraries and frameworks for both backend and frontend. **All wallet operations must use Gnosis Pay.**
+
+- **Gnosis Pay SDK / Modules**  
+  - *The official wallet provider and onboarding toolkit for Gnosis Pay wallets (built on Gnosis Safe).*
+  - Use this for:
+    - Connecting the user's Gnosis Pay wallet to your frontend.
+    - Creating a new Gnosis Pay (Safe) account for the user.
+    - Guiding the user through funding, approvals, and transaction signing.
+  - [Gnosis Pay Developer Docs](https://docs.gnosis.pay/) *(replace with actual link when available)*
+  - *If Gnosis Pay exposes a React hook/component for wallet connection, use it in your “Connect Wallet” page.*
+
+- **Safe{Core} SDK**  
+  - *For advanced Gnosis Safe wallet management, transaction batching, and approvals. Gnosis Pay uses this under the hood.*
+  - [Safe{Core} SDK Docs](https://docs.safe.global/)
+
+- **Aave V3 SDK / Interfaces**  
+  - *For contract calls to supply/borrow on Aave.*
+  - [Aave V3 Docs](https://docs.aave.com/)
+
+- **Uniswap V4 SDK / Interfaces**  
+  - *For creating LP positions, interacting with hooks, and fee collection.*
+  - [Uniswap V4 Docs](https://docs.uniswap.org/)
+
+- **ethers.js / viem**  
+  - *For contract and wallet interaction in frontend apps.*
+  - [ethers.js Docs](https://docs.ethers.org/)
+  - [viem Docs](https://viem.sh/)
+
+- **OpenZeppelin Contracts**  
+  - *For safe, standard ERC20/ERC721 logic and security helpers.*
+  - [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/4.x/)
+
+---
+
+**Tip for Junior Dev:**  
+Whenever you see “connect wallet,” “approve,” or “sign” in the UI, always use the Gnosis Pay SDK hooks/components.  
+If you need to fetch the current wallet address, Safe address, or check balances, use the Gnosis Pay SDK or its exposed APIs.  
+Do NOT use MetaMask, WalletKit, or any EOA-based flows for this project!
+
+## 11. Network: Base Only (network ID 8453)
+
+> **Important:**  
+> This MVP is to be built and tested **only on the Base blockchain** (network ID 8453), and all Gnosis Pay wallets must be deployed and funded on Base.
+
+- **All smart contract deployments** (LeveragedLPManager, FeeCollectHook, etc.) must be on Base.
+- **All frontend wallet connections** (using Gnosis Pay SDK) must default to and require Base. Prompt user to switch networks if not on Base.
+- **All addresses, faucets, and test scripts** should use Base-compatible endpoints.
+- Make sure to use Gnosis Pay, Safe, Aave, and Uniswap contract addresses for Base.
+- If Gnosis Pay provides a direct onramp or faucet for Base, surface this in the UI.
+
+---
+
+- [Base Docs](https://docs.base.org/)
+- [Chainlist for Base](https://chainlist.org/chain/8453)
+- [Gnosis Pay Docs](https://docs.gnosis.pay/) *(Replace with correct link)*
+
+---
+
+**Hand this doc to any junior dev and they should be able to start building!  
+If you have questions, check the links above or reach out to your technical lead.  
+Good luck at your hackathon! 🚀**
