@@ -28,6 +28,7 @@ interface IWETH {
 }
 
 // Interface for Uniswap V4 Router
+// Uniswap V4 interfaces
 interface IUniswapV4Router {
     function exactInputSingle(
         address tokenIn,
@@ -38,6 +39,33 @@ interface IUniswapV4Router {
         uint256 amountOutMinimum,
         uint160 sqrtPriceLimitX96
     ) external returns (uint256 amountOut);
+}
+
+// Define the Currency type for Uniswap V4
+type Currency is address;
+
+// Define the PoolKey struct for Uniswap V4
+struct PoolKey {
+    Currency currency0;
+    Currency currency1;
+    uint24 fee;
+    int24 tickSpacing;
+    address hooks;
+}
+
+// Define the QuoteExactSingleParams struct
+struct QuoteExactSingleParams {
+    PoolKey poolKey;
+    bool zeroForOne;
+    uint128 exactAmount;
+    bytes hookData;
+}
+
+// Uniswap V4 Quoter interface
+interface IV4Quoter {
+    function quoteExactInputSingle(QuoteExactSingleParams memory params)
+        external
+        returns (uint256 amountOut, uint256 gasEstimate);
 }
 
 // Interfaces for Uniswap V4 Position Manager
@@ -110,14 +138,16 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
     address public immutable uniswapRouter;
     uint24 public immutable poolFee;
     
+    // Uniswap V4 Quoter address on Base
+    address public constant UNISWAP_V4_QUOTER = 0x52F0E24D1c21C8A0cB1e5a5dD6198556BD9E1203;
+    int24 public constant TICK_SPACING = 60; // For 0.3% fee tier
+    
     // Constants
     uint16 public constant REFERRAL_CODE = 0;
     uint256 public constant INTEREST_RATE_MODE = 2; // Variable rate
     uint256 public constant MAX_LTV = 75; // Maximum loan-to-value ratio (75%)
     
-    // Minimum amounts for slippage protection
-    uint256 public minEthAmount;
-    uint256 public minUsdcAmount;
+    // We'll use slippageBps parameter directly instead of hardcoded minimum amounts
     
     // Protocol fee in basis points (1/100 of a percent)
     // 100 = 1%, 10 = 0.1%, etc.
@@ -162,9 +192,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
         uniswapRouter = _uniswapRouter;
         poolFee = _poolFee;
         
-        // Set default slippage parameters (can be updated later)
-        minEthAmount = 1e15; // 0.001 ETH
-        minUsdcAmount = 1e6; // 1 USDC
+        // We now use slippageBps parameter directly for all slippage protection
     }
     
     /**
@@ -180,12 +208,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
         require(ltv > 0 && ltv <= MAX_LTV, "LTV must be <= 75%");
         require(userPositions[safe].safe == address(0), "Strategy already active");
         
-        // [1] Transfer ETH from Safe to this contract
-        // Check if the Safe has approved this contract to transfer ETH
-        uint256 allowance = IERC20(weth).allowance(safe, address(this));
-        require(allowance >= ethAmount, "Insufficient WETH allowance");
-        
-        // Transfer the WETH from Safe to this contract
+        // [1] Transfer the WETH from Safe to this contract
         IERC20(weth).transferFrom(safe, address(this), ethAmount);
         
         // [2] Supply ETH to Aave as collateral on behalf of the Safe
@@ -203,13 +226,54 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
         // [5] Swap USDC for ETH using Uniswap
         IERC20(usdc).approve(uniswapRouter, usdcToSwap);
         
+        // Use Uniswap V4 Quoter to get accurate price quote
+        // Create PoolKey for the USDC/WETH pool
+        Currency currency0;
+        Currency currency1;
+        
+        // Sort tokens to ensure correct currency0/currency1 order
+        if (uint160(usdc) < uint160(weth)) {
+            currency0 = Currency.wrap(usdc);
+            currency1 = Currency.wrap(weth);
+        } else {
+            currency0 = Currency.wrap(weth);
+            currency1 = Currency.wrap(usdc);
+        }
+        
+        // Define whether we're swapping from token0 to token1 or vice versa
+        bool zeroForOne = uint160(usdc) < uint160(weth);
+        
+        // Create the PoolKey
+        PoolKey memory poolKey = PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: poolFee,
+            tickSpacing: TICK_SPACING,
+            hooks: address(0) // No hooks for basic pools
+        });
+        
+        // Create parameters for the quoter
+        QuoteExactSingleParams memory quoteParams = QuoteExactSingleParams({
+            poolKey: poolKey,
+            zeroForOne: zeroForOne,
+            exactAmount: uint128(usdcToSwap),
+            hookData: ""
+        });
+        
+        // Query the Uniswap V4 Quoter - no try/catch fallback for financial safety
+        // If this fails, the transaction will revert, protecting user funds
+        (uint256 expectedOutput,) = IV4Quoter(UNISWAP_V4_QUOTER).quoteExactInputSingle(quoteParams);
+        
+        // Apply slippage tolerance to the quoted amount
+        uint256 amountOutMinimum = expectedOutput - ((expectedOutput * slippageBps) / 10000);
+        
         uint256 ethFromSwap = IUniswapV4Router(uniswapRouter).exactInputSingle(
             usdc,
             weth,
             poolFee,
             address(this),
             usdcToSwap,
-            minEthAmount,  // Minimum ETH to receive (slippage protection)
+            amountOutMinimum,  // Minimum ETH to receive with slippage protection
             0  // No price limit
         );
         

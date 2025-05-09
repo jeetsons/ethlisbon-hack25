@@ -33,7 +33,7 @@ const WETHABI = [
 // Configuration
 const config = {
   // Contract addresses from deployment
-  leveragedLPManager: "0x249Bb3eDb0FDC7ae7d9387262c41B29B499bBFDd", // LeveragedLPManager address
+  leveragedLPManager: "0xD8A2f062279C4Aea7de224e450f07587F5Cb71F7", // LeveragedLPManager address
   weth: "0x4200000000000000000000000000000000000006", // WETH on Base
   usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
 
@@ -82,11 +82,10 @@ async function main() {
     });
 
     // Initialize Safe API Kit
-    const safeService = new SafeApiKit({
+    new SafeApiKit({
       txServiceUrl: config.safeService,
       ethAdapter
     });
-
 
     // Use the existing Safe address instead of creating a new one
     console.log("Using existing Safe address...");
