@@ -478,6 +478,33 @@ contract LeveragedLPManagerTest is Test {
         manager.exitStrategy(noStrategySafe, true);
     }
     
+    function testExitStrategyNoSwap() public {
+        // First start a strategy
+        testStartStrategy();
+        
+        // Get the LP token ID and position details
+        (,uint256 lpTokenId) = manager.userPositions(safeWallet);
+        
+        // Set up the mock position manager to return liquidity for the position
+        positionManager.setPositionLiquidity(lpTokenId, 1000);
+        
+        // Exit the strategy with swapEthForDebt = false
+        // This means we don't want to swap ETH for USDC to repay debt
+        manager.exitStrategy(safeWallet, false);
+        
+        // Manually update the mock Aave values to simulate what would happen in the real contract
+        // In the real contract, these values would be updated by the Aave protocol
+        aavePool.setUserDebt(safeWallet, address(usdc), 0);
+        aavePool.setUserCollateral(safeWallet, address(weth), 0);
+        
+        // Check that the position was cleared (marked as inactive)
+        (address positionSafe,) = manager.userPositions(safeWallet);
+        assertEq(positionSafe, address(0), "Position should be inactive (cleared)");
+        
+        // Check that the LP token mapping was cleared
+        assertEq(manager.lpTokenToSafe(lpTokenId), address(0), "LP token mapping should be cleared");
+    }
+    
     function testGetUserPosition() public {
         // First start a strategy
         testStartStrategy();
@@ -497,6 +524,7 @@ contract LeveragedLPManagerTest is Test {
         
         // Verify the returned values
         assertEq(safe, safeWallet, "Safe wallet address mismatch");
+        assertEq(lpTokenId, 1, "LP token ID mismatch");
         assertTrue(isActive, "Position should be active");
         
         // Check Aave values

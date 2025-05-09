@@ -28,6 +28,7 @@ const config = {
   // Test parameters
   ethToTransfer: ethers.utils.parseEther("0.01"),
   ltv: 50, // 50% LTV
+  slippageBps: 50, // 0.5% slippage
 };
 
 async function main() {
@@ -127,7 +128,8 @@ async function main() {
     const startStrategyTx = await leveragedLPManager.startStrategy(
       newSafeAddress,
       config.ethToTransfer,
-      config.ltv
+      config.ltv,
+      config.slippageBps
     );
     
     await startStrategyTx.wait();
@@ -136,12 +138,14 @@ async function main() {
     // Get user position details
     const position = await leveragedLPManager.getUserPosition(newSafeAddress);
     console.log("User position created:");
-    console.log(`- Safe: ${position[0]}`);
-    console.log(`- LP Token ID: ${position[1].toString()}`);
-    console.log(`- ETH Supplied: ${ethers.utils.formatEther(position[2])}`);
-    console.log(`- USDC Borrowed: ${ethers.utils.formatUnits(position[3], 6)}`);
-    console.log(`- Liquidity: ${position[4].toString()}`);
-    console.log(`- Is Active: ${position[5]}`);
+    console.log(`- Safe: ${position.safe}`);
+    console.log(`- LP Token ID: ${position.lpTokenId.toString()}`);
+    
+    // Get debt and collateral information directly from Aave
+    const debt = await leveragedLPManager.getUserDebt(newSafeAddress);
+    const collateral = await leveragedLPManager.getUserCollateral(newSafeAddress);
+    console.log(`- ETH Collateral: ${ethers.utils.formatEther(collateral)}`);
+    console.log(`- USDC Debt: ${ethers.utils.formatUnits(debt, 6)}`);
     
     console.log("End-to-end test completed successfully!");
     

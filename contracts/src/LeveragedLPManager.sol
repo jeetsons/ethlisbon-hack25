@@ -206,6 +206,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         
         // [5] Swap USDC for ETH using Uniswap
         IERC20(usdc).approve(uniswapRouter, usdcToSwap);
+        
         uint256 ethFromSwap = IUniswapV4Router(uniswapRouter).exactInputSingle(
             usdc,
             weth,
