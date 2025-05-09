@@ -285,13 +285,11 @@ contract LeveragedLPManagerTest is Test {
         // Check that the position was created
         (
             address safe,
-            uint256 lpTokenId,
-            bool isActive
+            uint256 lpTokenId
         ) = manager.userPositions(safeWallet);
         
         // Verify the position details
         assertEq(safe, safeWallet, "Safe wallet address mismatch");
-        assertTrue(isActive, "Position should be active");
         assertEq(manager.lpTokenToSafe(lpTokenId), safeWallet, "LP token to Safe mapping incorrect");
     }
     
@@ -346,13 +344,11 @@ contract LeveragedLPManagerTest is Test {
         // Check that the position was created
         (
             address safe,
-            uint256 lpTokenId,
-            bool isActive
+            uint256 lpTokenId
         ) = manager.userPositions(safeWallet);
         
         // Verify the position details
         assertEq(safe, safeWallet, "Safe wallet address mismatch");
-        assertTrue(isActive, "Position should be active");
         
         // Verify the LP token mapping
         assertEq(manager.lpTokenToSafe(lpTokenId), safeWallet, "LP token to Safe mapping incorrect");
@@ -373,7 +369,7 @@ contract LeveragedLPManagerTest is Test {
         testStartStrategy();
         
         // Get the LP token ID
-        (,uint256 lpTokenId,) = manager.userPositions(safeWallet);
+        (,uint256 lpTokenId) = manager.userPositions(safeWallet);
         
         // Mock fee amounts
         uint256 usdcAmount = 100 * 10**6; // 100 USDC
@@ -443,7 +439,7 @@ contract LeveragedLPManagerTest is Test {
         testStartStrategy();
         
         // Get the LP token ID and position details
-        (,uint256 lpTokenId,) = manager.userPositions(safeWallet);
+        (,uint256 lpTokenId) = manager.userPositions(safeWallet);
         
         // Set up the mock position manager to return liquidity for the position
         positionManager.setPositionLiquidity(lpTokenId, 1000);
@@ -456,9 +452,9 @@ contract LeveragedLPManagerTest is Test {
         aavePool.setUserDebt(safeWallet, address(usdc), 0);
         aavePool.setUserCollateral(safeWallet, address(weth), 0);
         
-        // Check that the position was marked as inactive
-        (,,bool isActive) = manager.userPositions(safeWallet);
-        assertFalse(isActive, "Position should be inactive");
+        // Check that the position was cleared (marked as inactive)
+        (address positionSafe,) = manager.userPositions(safeWallet);
+        assertEq(positionSafe, address(0), "Position should be inactive (cleared)");
         
         // Check that the LP token mapping was cleared
         assertEq(manager.lpTokenToSafe(lpTokenId), address(0), "LP token mapping should be cleared");
@@ -491,7 +487,7 @@ contract LeveragedLPManagerTest is Test {
         aavePool.setUserCollateral(safeWallet, address(weth), ETH_AMOUNT);
         aavePool.setUserDebt(safeWallet, address(usdc), USDC_BORROW_AMOUNT);
         
-        // Get the position details
+        // Get the position details using getUserPosition
         (
             address safe,
             uint256 lpTokenId,

@@ -96,7 +96,6 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
     struct UserPosition {
         address safe;
         uint256 lpTokenId;
-        bool isActive;
     }
     
     mapping(address => UserPosition) public userPositions;
@@ -187,7 +186,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         require(safe != address(0), "Invalid Safe address");
         require(ethAmount > 0, "ETH amount must be > 0");
         require(ltv > 0 && ltv <= MAX_LTV, "LTV must be <= 75%");
-        require(!userPositions[safe].isActive, "Strategy already active");
+        require(userPositions[safe].safe == address(0), "Strategy already active");
         
         // [1] Transfer ETH from Safe to this contract
         // The Safe must have approved this contract to transfer ETH
@@ -257,7 +256,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         UserPosition storage position = userPositions[safe];
         position.safe = safe;
         position.lpTokenId = tokenId;
-        position.isActive = true;
+        // Position is active when it has a valid safe address and lpTokenId
         
         lpTokenToSafe[tokenId] = safe;
         
@@ -288,7 +287,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         require(msg.sender == feeHook, "Only hook can process fees");
         
         UserPosition storage position = userPositions[safe];
-        require(position.isActive, "No active strategy");
+        require(position.safe != address(0), "No active strategy");
         
         uint256 lpTokenId = position.lpTokenId;
         
@@ -333,7 +332,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
      */
     function exitStrategy(address safe) external nonReentrant {
         UserPosition storage position = userPositions[safe];
-        require(position.isActive, "No active strategy");
+        require(position.safe != address(0), "No active strategy");
         
         uint256 lpTokenId = position.lpTokenId;
         uint256 ethReturned = 0;
@@ -447,10 +446,12 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
      */
     function getUserPosition(address safe) external view returns (address, uint256, bool) {
         UserPosition storage position = userPositions[safe];
+        // A position is considered active if it has a valid safe address
+        bool isActive = position.safe != address(0);
         return (
             position.safe,
             position.lpTokenId,
-            position.isActive
+            isActive
         );
     }
     
