@@ -12,7 +12,7 @@ All onboarding, wallet, and contract interactions must use Gnosis Pay and follow
 
 - `docs/`  
   Contains all hackathon specs, UI/UX guides, technical breakdowns, and developer task assignments.  
-  **Always consult `docs/2_combined/readme.md` for up-to-date requirements, approvals, and flows.**
+  **Always consult `docs/readme.md` for up-to-date requirements, approvals, and flows.**
 
 - `contracts/`  
   Solidity sources for smart contracts, including:
@@ -54,23 +54,23 @@ All onboarding, wallet, and contract interactions must use Gnosis Pay and follow
   - Document contract interface and events.
   - Provide deployment details and ABI to Dev 1.
 
-- **Never merge code that violates security assumptions or core workflow described in `docs/2_combined/readme.md`.**
+- **Never merge code that violates security assumptions or core workflow described in `docs/readme.md`.**
 
 ## Documentation Rules
 
-- All major changes must be documented in `docs/2_combined/readme.md` and, if necessary, referenced from the .windsurfrules.
+- All major changes must be documented in `docs/readme.md` and, if necessary, referenced from the .windsurfrules.
 - Use clear comments and commit messages—assume junior devs and external reviewers will read your code.
 
 ## Testing
 
 - All contracts must have basic unit tests (preferably Hardhat).
 - All UI flows must be tested with Gnosis Pay wallet on Base testnet.
-- Manual testing checklist: see "Step-by-Step Hackathon Checklist" in `docs/2_combined/readme.md`.
+- Manual testing checklist: see "Step-by-Step Hackathon Checklist" in `docs/readme.md`.
 
 ## Additional Notes
 
 - Target blockchain: **Base (network ID 8453) only**.
-- Reference spec: `docs/2_combined/readme.md`
+- Reference spec: `docs/readme.md`
 - For any questions, consult the docs or reach out to project leads.
 
 # End of .windsurfrules
