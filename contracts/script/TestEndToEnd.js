@@ -10,13 +10,20 @@ const { SafeFactory } = require('@safe-global/protocol-kit');
 
 
 // Contract ABIs - You'll need to replace these with the actual ABIs
-const LeveragedLPManagerABI = require('../out/LeveragedLPManager.sol/LeveragedLPManager.json').abi;
+const LeveragedLPManagerABI = [
+  "function startStrategy(address safe, uint256 ethAmount, uint256 ltv, uint16 slippageBps) external",
+  "function getUserPosition(address safe) external view returns (address safe, uint256 lpTokenId)",
+  "function owner() external view returns (address)",
+  "function protocolFeeBps() external view returns (uint8)",
+  "function feeHook() external view returns (address)"
+];
+
 const WETHABI = [
+  "function deposit() external payable",
+  "function balanceOf(address owner) external view returns (uint256)",
   "function approve(address spender, uint256 amount) external returns (bool)",
-  "function balanceOf(address account) external view returns (uint256)",
   "function allowance(address owner, address spender) external view returns (uint256)",
-  "function transfer(address to, uint256 amount) external returns (bool)",
-  "function transferFrom(address from, address to, uint256 amount) external returns (bool)",
+  "function transfer(address to, uint amount) external returns (bool)",
   "function name() external view returns (string)",
   "function symbol() external view returns (string)",
   "function decimals() external view returns (uint8)",
@@ -26,7 +33,7 @@ const WETHABI = [
 // Configuration
 const config = {
   // Contract addresses from deployment
-  leveragedLPManager: "0x9C420Cbb54F85b612DCAcab8FD4Ad30f6F43B6d2", // LeveragedLPManager address
+  leveragedLPManager: "0x249Bb3eDb0FDC7ae7d9387262c41B29B499bBFDd", // LeveragedLPManager address
   weth: "0x4200000000000000000000000000000000000006", // WETH on Base
   usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
 
@@ -111,18 +118,48 @@ async function main() {
 
     await tx.wait();
     console.log(`ETH transferred to Safe. Tx hash: ${tx.hash}`);
+    
+    // Connect to the WETH contract early so we can use it for both wrapping and approvals
+    const weth = new ethers.Contract(
+      config.weth,
+      WETHABI,
+      signer
+    );
+    
+    // Create a Safe transaction to wrap ETH to WETH
+    console.log("Creating Safe transaction to wrap ETH to WETH...");
+    try {
+      // Create the deposit function call data (no parameters needed for deposit)
+      const wrapEthData = weth.interface.encodeFunctionData("deposit", []);
+      
+      const wrapEthTxData = {
+        to: config.weth,
+        data: wrapEthData,
+        value: config.ethToTransfer.toString(), // Send the ETH amount to wrap
+      };
+      
+      // Use the Safe SDK for transaction creation
+      const wrapTransaction = await safeSdk.createTransaction({ safeTransactionData: wrapEthTxData });
+      const signedWrapTx = await safeSdk.signTransaction(wrapTransaction);
+      
+      // Execute the transaction
+      const wrapTxResponse = await safeSdk.executeTransaction(signedWrapTx);
+      await wrapTxResponse.transactionResponse?.wait();
+      
+      console.log(`ETH wrapped to WETH via Safe. Tx hash: ${wrapTxResponse.transactionResponse?.hash}`);
+      
+      // Check WETH balance
+      const wethBalance = await weth.balanceOf(safeAddress);
+      console.log(`Safe WETH balance: ${ethers.utils.formatEther(wethBalance)} WETH`);
+    } catch (error) {
+      console.error(`Error wrapping ETH to WETH: ${error.message}`);
+      console.log('Continuing with the test despite wrapping error...');
+    }
 
     // Connect to the LeveragedLPManager contract
     const leveragedLPManager = new ethers.Contract(
       config.leveragedLPManager,
       LeveragedLPManagerABI,
-      signer
-    );
-
-    // Connect to the WETH contract
-    const weth = new ethers.Contract(
-      config.weth,
-      WETHABI,
       signer
     );
 
@@ -159,15 +196,6 @@ async function main() {
       // Check if safeSdk is defined
       if (!safeSdk) {
         throw new Error("Safe SDK is not initialized. Cannot create Safe transaction for startStrategy.");
-      }
-      
-      // Check if the Safe has enough ETH
-      const safeBalance = await provider.getBalance(safeAddress);
-      console.log(`Safe balance: ${ethers.utils.formatEther(safeBalance)} ETH`);
-      
-      if (safeBalance.lt(config.ethToTransfer)) {
-        console.warn(`Safe doesn't have enough ETH. Has ${ethers.utils.formatEther(safeBalance)} ETH, needs ${ethers.utils.formatEther(config.ethToTransfer)} ETH`);
-        throw new Error("Safe doesn't have enough ETH for the strategy");
       }
       
       // Check if the Safe has approved the LeveragedLPManager to spend its WETH
@@ -218,18 +246,6 @@ async function main() {
         config.slippageBps
       ]);
       
-      try {
-        const decodedData = leveragedLPManager.interface.decodeFunctionData("startStrategy", startStrategyData);
-        console.log("Decoded parameters:");
-        console.log("- Safe address:", decodedData[0]);
-        console.log("- ETH amount:", ethers.utils.formatEther(decodedData[1]), "ETH");
-        console.log("- LTV:", decodedData[2].toString());
-        console.log("- Slippage BPS:", decodedData[3].toString());
-        
-      } catch (error) {
-        console.error("Error decoding transaction data:", error.message);
-      }
-      
       const startStrategyTxData = {
         to: config.leveragedLPManager,
         data: startStrategyData,
@@ -243,7 +259,7 @@ async function main() {
       
       // Execute the transaction with a fixed gas limit
       console.log("Executing Safe transaction for startStrategy...");
-      const executeTxResponse = await safeSdk.executeTransaction(signedSafeTx, { gasLimit: 1000000 });
+      const executeTxResponse = await safeSdk.executeTransaction(signedSafeTx, { gasLimit: 2000000 });
       await executeTxResponse.transactionResponse?.wait();
       
       console.log(`Strategy started via Safe. Tx hash: ${executeTxResponse.transactionResponse?.hash}`);
