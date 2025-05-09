@@ -384,6 +384,7 @@ For a smooth user journey, you should implement the following UI screens/pages.
   - After creation, show the resulting Gnosis Safe wallet address on Base.
   - Option to “Select Existing Gnosis Pay Wallet” if already created or imported.
   - *Tip for devs:* Gnosis Pay may handle the wallet creation flow natively, so your frontend often just triggers their SDK’s onboarding modal.
+- **Approvals Required:** None at this stage—just wallet creation.
 
 ---
 
@@ -395,18 +396,29 @@ For a smooth user journey, you should implement the following UI screens/pages.
   - "Deposit ETH" button.
   - Transaction status (pending/success/fail).
   - *Tip:* If Gnosis Pay provides fiat onramps, you can link to those here.
+- **Approvals Required:** None yet—just ETH deposit.
 
 ---
 
 ### 4. **Strategy Setup & Approval Page**
 - **Purpose:** Prepare user for starting the strategy, and handle all contract approvals via their Gnosis Pay wallet.
 - **Core elements:**
-  - List required approvals:
-    - Approve `LeveragedLPManager` for wallet's ETH/USDC and the future Uniswap LP NFT.
-    - Approve `FeeCollectHook` for LP NFT (after it is minted).
-  - Buttons to trigger each approval and show status (pending/complete).
-  - Safety tips: Explain why each approval is needed (e.g., "The fee hook needs permission to collect fees from your liquidity position").
-  - Only allow strategy start after all approvals are confirmed.
+  - List required approvals and their purpose:
+    1. **Approve `LeveragedLPManager` contract for ERC20 tokens (ETH/USDC):**
+       - Needed so the manager contract can deposit/withdraw/repay on Aave and interact with Uniswap on your behalf.
+       - *UI Tip:* Show approval status and provide a button: "Approve Manager for Token Access".
+    2. **After LP NFT mint:**  
+       - **Approve `FeeCollectHook` contract for LP NFT:**
+         - Needed so the hook contract can collect fees on your behalf every 10th trade.
+         - *UI Tip:* Show approval status and provide a button: "Approve Hook for Fee Collection".
+       - **Approve `LeveragedLPManager` contract for LP NFT:**  
+         - Needed so the manager contract can unwind (exit) your position and withdraw all funds when you choose to exit.
+         - *UI Tip:* Show approval status and provide a button: "Approve Manager for LP NFT Exit".
+  - Safety tips: Explain why each approval is needed (e.g., "The fee hook needs permission to collect fees from your liquidity position; the manager needs permission to unwind your position and return funds.").
+  - Only allow strategy start after all ERC20 approvals are confirmed. Only allow fee automation/exit after NFT approvals are confirmed.
+- **Approvals Required:**  
+  - ERC20 token approvals for manager (pre-strategy).
+  - LP NFT approvals for hook and manager (post-mint, before fee collection/exit).
 
 ---
 
@@ -417,6 +429,9 @@ For a smooth user journey, you should implement the following UI screens/pages.
   - Form/input to choose "Deposit Amount" and "Leverage" (LTV).
   - Button: "Start Strategy"
   - Show transaction status and the resulting LP NFT ID (display confirmation once strategy is live).
+- **Approvals Required:**  
+  - All ERC20 approvals for manager must be set before starting.
+  - After LP NFT is minted, user must approve both FeeCollectHook (for fee automation) and LeveragedLPManager (for exit/unwind) for the NFT.
 
 ---
 
@@ -428,6 +443,10 @@ For a smooth user journey, you should implement the following UI screens/pages.
   - LP position stats: accrued fees, trade count toward next fee collection.
   - Event/activity log (showing recent contract events).
   - Button: "Exit & Unwind" (visible if strategy active).
+  - *Show approval status for both FeeCollectHook and LeveragedLPManager for the LP NFT.*
+- **Approvals Required:**  
+  - None for viewing.  
+  - For fee automation and exit, show status and prompt user if NFT approvals are missing.
 
 ---
 
@@ -438,6 +457,9 @@ For a smooth user journey, you should implement the following UI screens/pages.
   - Last fees collected (amounts, timestamp).
   - Next scheduled collection (after 10 trades).
   - Status of FeeCollectHook contract (approved? collecting?).
+- **Approvals Required:**  
+  - **FeeCollectHook** must be approved for the LP NFT for fee automation to function.
+  - If not, guide user to approve via UI.
 
 ---
 
@@ -447,6 +469,10 @@ For a smooth user journey, you should implement the following UI screens/pages.
   - Summary of current position and what will happen on exit.
   - Button: "Exit & Withdraw All"
   - Transaction progress and final balances returned to Gnosis Pay wallet.
+  - *Display status of approval for LeveragedLPManager to access the LP NFT. If not approved, prompt user to approve before allowing exit!*
+- **Approvals Required:**  
+  - **LeveragedLPManager** must be approved for the LP NFT (either by `approve(manager, lpTokenId)` or `setApprovalForAll(manager, true)`) to enable the smart contract to unwind/exit the position and return funds.
+  - If approval is missing, the contract will revert and exit will fail. Always check and request approval before showing "Exit & Withdraw All" as actionable!
 
 ---
 
@@ -455,6 +481,7 @@ For a smooth user journey, you should implement the following UI screens/pages.
 - **Core elements:**
   - Catch missing approvals, failed transactions, or on-chain errors.
   - Guidance for user to retry or seek help.
+  - *If an exit fails due to missing NFT approval, show a specific error and a button to approve the LeveragedLPManager for the LP NFT!*
 
 ---
 
@@ -464,9 +491,29 @@ For a smooth user journey, you should implement the following UI screens/pages.
 - Use a router/navigation bar for easy switching between screens.
 - Event-driven updates (listen for contract events!) keep your UI live and responsive.
 - **All onboarding, funding, and approvals must use Gnosis Pay’s UI/SDK. If using WalletKit or another connector, ensure it is Gnosis Pay compatible.**
+- **NFT approvals are essential for both fee automation (FeeCollectHook) and exit/unwind (LeveragedLPManager). Always prompt the user after LP NFT mint to approve both!**
 - *Reminder:* Gnosis Pay abstracts Safe wallet creation/management into a streamlined experience, but under the hood, you are always interacting with a Gnosis Safe on the Base network.
 
 ---
+
+**Sample Approval UI Button (ethers.js pseudocode):**
+```js
+// For Fee Automation (after LP NFT mint):
+await nftContract.approve(feeCollectHookAddress, lpTokenId); 
+
+// For Exit/Unwind (before exit allowed!):
+await nftContract.approve(leveragedLPManagerAddress, lpTokenId); 
+// Or, for either, setApprovalForAll(<contract>, true)
+```
+
+*Always check if the approval is already set before showing the button.*
+
+---
+
+**In summary:**  
+- **To collect fees:** Approve FeeCollectHook for the LP NFT.
+- **To exit/unwind:** Approve LeveragedLPManager for the LP NFT.
+- **UI must surface these requirements and block actions until approvals are granted.**
 
 ## 10. Libraries & Frameworks Used
 
