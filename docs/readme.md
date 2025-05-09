@@ -324,12 +324,135 @@ await nftContract.approve(feeCollectHookAddress, lpTokenId); // Or setApprovalFo
 
 ---
 
-## 9. References & Links
+## 9. UI Pages & Screens Needed
 
-- [Safe{Core} SDK Docs](https://docs.safe.global/)
-- [Aave V3 Developer Docs](https://docs.aave.com/)
-- [Uniswap V4 Docs (Preview)](https://docs.uniswap.org/)
-- [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/4.x/)
+For a smooth user journey, you should implement the following UI screens/pages. This will help your junior dev break down frontend work and ensure nothing is missed.
+
+### 1. **Landing Page / Connect Wallet**
+- **Purpose:** Welcome user, let them connect their standard wallet (e.g., MetaMask).
+- **Core elements:**
+  - "Connect Wallet" button (show current address if connected).
+  - Brief intro to the dApp and what it does.
+
+### 2. **Safe Wallet Creation Page**
+- **Purpose:** Guide user to create a Safe (1/1 owner) if they don’t already have one.
+- **Core elements:**
+  - Button: "Create Safe Wallet"
+  - Show Safe address after creation.
+  - Option to “Select Existing Safe” if already created.
+
+### 3. **Safe Funding Page**
+- **Purpose:** Let user deposit ETH into their Safe.
+- **Core elements:**
+  - Display Safe address and ETH balance.
+  - Input field for deposit amount.
+  - "Deposit ETH" button.
+  - Transaction status (pending/success/fail).
+
+### 4. **Strategy Setup & Approval Page**
+- **Purpose:** Prepare user for strategy start, handle all contract approvals.
+- **Core elements:**
+  - List required approvals:
+    - Approve LeveragedLPManager for Safe's ETH/USDC and future Uniswap LP NFT.
+    - Approve FeeCollectHook for LP NFT (after it is minted).
+  - Buttons to trigger each approval (show status of each).
+  - Safety tips: Explain why each approval is needed.
+  - Only allow strategy start after all approvals are done.
+
+### 5. **Start Strategy Page**
+- **Purpose:** Let user start the DeFi strategy (deposit, borrow, LP mint).
+- **Core elements:**
+  - Display current Safe balances.
+  - Form/input to choose "Deposit Amount" and "Leverage" (LTV).
+  - Button: "Start Strategy"
+  - Show transaction status and resulting LP NFT ID.
+
+### 6. **Dashboard / Monitoring Page**
+- **Purpose:** Show current strategy status and key metrics.
+- **Core elements:**
+  - Safe balances: ETH, USDC, aETH, LP NFT status.
+  - Aave health factor, borrowed USDC, remaining debt.
+  - LP position stats: accrued fees, trade count toward next fee collection.
+  - Event/activity log (showing recent contract events).
+  - Button: "Exit & Unwind" (visible if strategy active).
+
+### 7. **Fee Automation Status Page**
+- **Purpose:** Explain and visualize fee collection automation.
+- **Core elements:**
+  - Progress bar or counter: “Trades since last fee collection.”
+  - Last fees collected (amounts, timestamp).
+  - Next scheduled collection (after 10 trades).
+  - Status of FeeCollectHook contract (approved? collecting?).
+
+### 8. **Exit/Unwind Confirmation Page**
+- **Purpose:** Let user confirm and execute full unwind of their strategy.
+- **Core elements:**
+  - Summary of current position and what will happen on exit.
+  - Button: "Exit & Withdraw All"
+  - Transaction progress and final balances returned to Safe.
+
+### 9. **Error & Troubleshooting Page/Modal**
+- **Purpose:** Display clear errors and next steps.
+- **Core elements:**
+  - Catch missing approvals, failed transactions, or on-chain errors.
+  - Guidance for user to retry or seek help.
+
+---
+
+**Notes for Junior Dev:**
+- All pages should clearly show current wallet and Safe addresses.
+- Loading indicators and status feedback are important for all transactions.
+- Use a router/navigation bar for easy switching between screens.
+- Event-driven updates (listen for contract events!) help keep UI live and responsive.
+
+---
+
+## 10. Libraries & Frameworks Used
+
+For this MVP, use the following libraries and frameworks for a smooth developer and user experience:
+
+- **WalletKit**  
+  *Wallet connection provider for React and web apps. Handles multi-wallet support, network switching, and is recommended for onboarding users to Safe and Base.*
+  - [WalletKit Docs](https://github.com/rainbow-me/walletkit)
+  - Use WalletKit to connect user's EOA and guide them to Base (network ID 8453).
+
+- **Safe{Core} SDK**  
+  *For Safe wallet creation, transaction batching, and approvals.*
+  - [Safe{Core} SDK Docs](https://docs.safe.global/)
+
+- **Aave V3 SDK / Interfaces**  
+  *For contract calls to supply/borrow on Aave.*
+  - [Aave V3 Docs](https://docs.aave.com/)
+
+- **Uniswap V4 SDK / Interfaces**  
+  *For liquidity positions, hooks, and fee collection.*
+  - [Uniswap V4 Docs](https://docs.uniswap.org/)
+
+- **ethers.js / viem**  
+  *For contract and wallet interaction in frontend apps.*
+  - [ethers.js Docs](https://docs.ethers.org/)
+  - [viem Docs](https://viem.sh/)
+
+- **OpenZeppelin Contracts**  
+  *For safe, standard ERC20/ERC721 logic and security helpers.*
+  - [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/4.x/)
+
+---
+
+## 11. Network: Base Only (network ID 8453)
+
+> **Important:**  
+> This MVP is to be built and tested **only on the Base blockchain** (network ID 8453).
+
+- **All contract deployments** should target Base.
+- **All frontend wallet connections** (via WalletKit or other providers) must default to and require Base.
+- **All addresses, faucets, and test scripts** should use Base-compatible endpoints.
+- Ensure all Safe, Aave, and Uniswap addresses and parameters are set for Base.
+
+---
+
+- [Base Docs](https://docs.base.org/)
+- [Chainlist for Base](https://chainlist.org/chain/8453)
 
 ---
 
