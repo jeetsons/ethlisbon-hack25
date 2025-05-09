@@ -1,0 +1,24 @@
+{
+  "name": "leveraged-lp-contracts",
+  "version": "1.0.0",
+  "description": "Smart contracts for DeFi Safe Leveraged LP with Gnosis Pay, Aave V3, Uniswap V4",
+  "scripts": {
+    "test": "forge test",
+    "build": "forge build",
+    "deploy:base": "forge script script/Deploy.s.sol:DeployScript --rpc-url ${BASE_RPC_URL} --broadcast --verify",
+    "deploy:base-sepolia": "forge script script/Deploy.s.sol:DeployScript --rpc-url ${BASE_SEPOLIA_RPC_URL} --broadcast --verify",
+    "verify:base": "forge verify-contract --chain-id 8453 --watch",
+    "verify:base-sepolia": "forge verify-contract --chain-id 84532 --watch",
+    "test:e2e": "node script/TestEndToEnd.js"
+  },
+  "keywords": [
+    "defi",
+    "ethereum",
+    "base",
+    "aave",
+    "uniswap",
+    "gnosis"
+  ],
+  "author": "",
+  "license": "MIT"
+}
