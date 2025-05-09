@@ -5,6 +5,7 @@ import "../lib/openzeppelin-contracts/contracts/token/ERC721/IERC721Receiver.sol
 import "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "../lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import "../lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import "../lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
 // Interfaces for Aave V3
 interface IAavePool {
@@ -90,7 +91,7 @@ interface IUniswapV4PositionManager {
  * All user funds and NFTs remain in the Gnosis Safe wallet at all times
  * Contracts only act as operators with explicit approval from the Safe
  */
-contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
+contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
     
     struct UserPosition {
@@ -105,7 +106,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
     address public immutable positionManager;
     address public immutable usdc;
     address public immutable weth;
-    address public immutable feeHook;
+    address public feeHook;
     address public immutable uniswapRouter;
     uint24 public immutable poolFee;
     
@@ -117,6 +118,10 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
     // Minimum amounts for slippage protection
     uint256 public minEthAmount;
     uint256 public minUsdcAmount;
+    
+    // Protocol fee in basis points (1/100 of a percent)
+    // 100 = 1%, 10 = 0.1%, etc.
+    uint8 public protocolFeeBps = 0;
 
     // Events for analytics and debugging
     event StrategyStarted(address indexed safe, uint256 indexed lpTokenId, uint256 ethSupplied, uint256 usdcBorrowed);
@@ -142,7 +147,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         address _feeHook,
         address _uniswapRouter,
         uint24 _poolFee
-    ) {
+    ) Ownable(msg.sender) {
         require(_aavePool != address(0), "Invalid Aave pool address");
         require(_positionManager != address(0), "Invalid position manager address");
         require(_usdc != address(0), "Invalid USDC address");
@@ -159,22 +164,9 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         
         // Set default slippage parameters (can be updated later)
         minEthAmount = 1e15; // 0.001 ETH
-        minUsdcAmount = 1e6;  // 1 USDC
+        minUsdcAmount = 1e6; // 1 USDC
     }
     
-    /**
-     * @dev Update the minimum amounts for slippage protection
-     * @param _minEthAmount Minimum ETH amount for slippage protection
-     * @param _minUsdcAmount Minimum USDC amount for slippage protection
-     */
-    function updateSlippageParams(uint256 _minEthAmount, uint256 _minUsdcAmount) external {
-        // Only the contract owner can update slippage parameters
-        // In a production environment, this should be restricted to an admin role
-        minEthAmount = _minEthAmount;
-        minUsdcAmount = _minUsdcAmount;
-        emit SlippageParamsUpdated(_minEthAmount, _minUsdcAmount);
-    }
-
     /**
      * @dev Start the leveraged LP strategy
      * @param safe The address of the user's Gnosis Safe wallet
@@ -295,6 +287,28 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         // Track how much was processed for the event
         uint256 usdcProcessed = 0;
         uint256 ethProcessed = 0;
+        
+        // Calculate protocol fee if enabled
+        uint256 usdcFee = 0;
+        uint256 ethFee = 0;
+        
+        if (protocolFeeBps > 0) {
+            usdcFee = (usdcAmount * protocolFeeBps) / 10000;
+            ethFee = (ethAmount * protocolFeeBps) / 10000;
+            
+            // Deduct fee from amounts
+            usdcAmount = usdcAmount - usdcFee;
+            ethAmount = ethAmount - ethFee;
+            
+            // Transfer fees to contract owner
+            if (usdcFee > 0) {
+                IERC20(usdc).transfer(owner(), usdcFee);
+            }
+            
+            if (ethFee > 0) {
+                IERC20(weth).transfer(owner(), ethFee);
+            }
+        }
         
         // [1] Repay Aave USDC debt (on behalf of Safe)
         if (usdcAmount > 0) {
@@ -473,6 +487,31 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard {
         );
     }
     
+    // Events for protocol fee changes
+    event ProtocolFeeUpdated(uint8 oldFeeBps, uint8 newFeeBps);
+
+    /**
+     * @dev Update the fee hook address
+     * @param _feeHook New fee hook address
+     */
+    function setFeeHook(address _feeHook) external onlyOwner {
+        require(_feeHook != address(0), "Invalid fee hook address");
+        feeHook = _feeHook;
+    }
+    
+    /**
+     * @dev Update the protocol fee in basis points
+     * @param _feeBps New fee in basis points (100 = 1%)
+     */
+    function setProtocolFee(uint8 _feeBps) external onlyOwner {
+        require(_feeBps <= 1000, "Fee too high"); // Max 10%
+        uint8 oldFeeBps = protocolFeeBps;
+        protocolFeeBps = _feeBps;
+        emit ProtocolFeeUpdated(oldFeeBps, _feeBps);
+    }
+    
+    // Note: transferOwnership function is inherited from OpenZeppelin's Ownable contract
+
     /**
      * @dev Required for IERC721Receiver
      */

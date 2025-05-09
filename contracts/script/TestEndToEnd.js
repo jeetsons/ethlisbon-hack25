@@ -13,8 +13,8 @@ const WETHABI = [
 
 // Configuration
 const config = {
-  // Replace with your contract addresses after deployment
-  leveragedLPManager: "0x0000000000000000000000000000000000000000", // Replace with actual address
+  // Contract addresses from deployment
+  leveragedLPManager: "0x7DD8fB835e39aeb631C1Be80dA0fcb6E0C17D979", // LeveragedLPManager address
   weth: "0x4200000000000000000000000000000000000006", // WETH on Base
   usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
   
