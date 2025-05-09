@@ -231,7 +231,7 @@ contract MainLogicContract is IERC721Receiver {
 ```
 
 
-Key Functions in MainLogicContract:
+**Key Functions in MainLogicContract:**
 
 borrowAndCreateLP(address _userSafeAddress, uint256 _usdcAmountToBorrow, /* Uniswap params */)
 
