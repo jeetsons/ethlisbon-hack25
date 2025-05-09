@@ -606,7 +606,98 @@ For this MVP, use the following libraries and frameworks.
 
 ---
 
-**Hand this doc to any junior dev and they should be able to start building! If you have questions, check the links above or reach out to your technical lead. Good luck at your hackathon! 🚀**
+---
+
+## 12. Developer Task Breakdown & Assignments
+
+This project is split into two main roles.  
+**Dev 1:** Gnosis Pay UI / Frontend  
+**Dev 2:** Smart Contracts / Backend
+
+### **Dev 1 — Gnosis Pay UI / Frontend**
+
+**Primary Responsibilities:**
+- All user-facing pages, wallet onboarding, approvals, and transactions.
+- Surface contract events, errors, and approval status.
+- Integrate with Gnosis Pay wallet SDK and Safe{Core} SDK as needed.
+
+**Task List:**
+1. **Landing & Wallet Connection**
+   - Integrate Gnosis Pay SDK for wallet connection and account creation.
+   - Show wallet address, onboarding status, and instructions.
+
+2. **Funding Page**
+   - Allow user to deposit ETH into Gnosis Pay wallet (show balance, deposit flow).
+   - Optional: Integrate fiat onramps if available.
+
+3. **Strategy Setup & Approvals**
+   - UI for ERC20 approvals to LeveragedLPManager (ETH, USDC).
+   - After LP NFT mint, UI for NFT approvals:
+     - Approve FeeCollectHook for fee automation.
+     - Approve LeveragedLPManager for exit/unwind.
+   - Display approval status and block further actions until approvals confirmed.
+
+4. **Start Strategy Page**
+   - UI/forms to enter deposit amount, LTV, and start strategy.
+   - Show result (LP NFT minted, transaction receipts).
+
+5. **Monitoring Dashboard**
+   - Display wallet balances, strategy status, Aave/Uniswap stats, events, and trade/fee counters.
+   - Listen for contract events and update UI live.
+   - Show approval status for both FeeCollectHook and LeveragedLPManager.
+
+6. **Exit/Unwind Page**
+   - Confirm exit, check NFT approval for LeveragedLPManager, and prompt if missing.
+   - Show progress and receipt of exit/unwind operation.
+
+7. **Error Handling / Troubleshooting**
+   - Display errors, failed transactions, or missing approvals.
+   - Guide user to resolve (re-try, re-approve, etc).
+
+**Collaboration/Integration Points:**
+- Coordinate with Dev 2 for contract addresses, ABI, and event definitions.
+- Test all flows on Base testnet; sync with Dev 2 for contract deployments.
+
+---
+
+### **Dev 2 — Smart Contracts / Backend**
+
+**Primary Responsibilities:**
+- Implement, test, and deploy all smart contracts for the protocol.
+- Ensure proper event emission and support for approval flows.
+- Document contract ABIs and interaction steps for Dev 1.
+
+**Task List:**
+1. **LeveragedLPManager**
+   - Implement supply, borrow, swap, and LP mint logic.
+   - Add USDC→ETH swap using Uniswap (see startStrategy update).
+   - Ensure ERC20 and NFT approvals are checked and required (fail gracefully if missing).
+   - Implement exitStrategy to unwind and require NFT approval from the Safe.
+   - Emit all specified events (StrategyStarted, FeesProcessed, StrategyExited).
+
+2. **FeeCollectHook**
+   - Track trade count per LP NFT.
+   - After every 10th trade, collect fees (requires NFT approval).
+   - Call LeveragedLPManager.processFees with collected amounts.
+   - Emit FeesCollected event.
+
+3. **Testing/Deployment**
+   - Write and run unit tests for all contract functions (supply, borrow, swap, mint, collect, exit).
+   - Deploy contracts to Base testnet.
+   - Provide deployed addresses, ABIs, and event names to Dev 1.
+
+4. **Documentation**
+   - Clearly document required approvals for ERC20 and LP NFT.
+   - Provide example calldata for all key contract interactions.
+
+**Collaboration/Integration Points:**
+- Provide contract addresses, ABIs, and event schemas to Dev 1.
+- Support Dev 1 in debugging or tracing contract events and state.
+- Coordinate upgrade/bugfix cycles during hackathon.
+
+---
+
+**Hand this doc to both devs—they should be able to start building with clear ownership and handoffs! If you have questions, check the links above or reach out to your technical lead. Good luck at your hackathon! 🚀**
 
 For a smooth user journey, you should implement the following UI screens/pages, tailored for **Gnosis Pay** (which uses Gnosis Safe wallets under the hood):
 
