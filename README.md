@@ -119,9 +119,8 @@ contract LeveragedLPManager is IERC721Receiver {
     struct UserPosition {
         address safe;
         uint256 lpTokenId;
-        uint256 ethSupplied;
-        uint256 usdcBorrowed;
-        bool isActive;
+        // Removed ethSupplied and usdcBorrowed fields - now querying Aave directly
+        // Removed isActive field - position is active if safe != address(0)
     }
     mapping(address => UserPosition) public userPositions;
     mapping(uint256 => address) public lpTokenToSafe;
@@ -146,7 +145,7 @@ contract LeveragedLPManager is IERC721Receiver {
     }
 
     // 1. Start the leveraged LP strategy
-    function startStrategy(address safe, uint256 ethAmount, uint256 ltv) external {
+    function startStrategy(address safe, uint256 ethAmount, uint256 ltv, uint16 slippageBps) external {
         require(!userPositions[safe].isActive, "Strategy already active");
         // [0] PRECONDITION: This contract must be approved by Safe to move ETH/USDC and mint LP
 
@@ -205,10 +204,10 @@ contract LeveragedLPManager is IERC721Receiver {
     }
 
     // 3. User triggers unwind of the position
-    function exitStrategy(address safe) external {
-        require(userPositions[safe].isActive, "No active position");
+    function exitStrategy(address safe, bool swapEthForDebt) external {
+        require(userPositions[safe].safe != address(0), "No active strategy");
         // [1] Withdraw liquidity from Uniswap V4, collect to Safe
-        // [2] Repay remaining USDC debt
+        // [2] Repay remaining USDC debt (if swapEthForDebt=true, will swap ETH for USDC if needed)
         // [3] Withdraw all ETH collateral
         // [4] Update position mapping
         emit StrategyExited(safe, /*ethReturned=*/0, /*usdcReturned=*/0);
@@ -359,7 +358,35 @@ await nftContract.approve(feeCollectHookAddress, lpTokenId); // Or setApprovalFo
 
 ---
 
-## 8. Extending or Debugging
+## 8. Contract Implementation Improvements
+
+The LeveragedLPManager contract has been improved with several key enhancements:
+
+1. **Simplified UserPosition Struct**:
+   - Removed `ethSupplied`, `usdcBorrowed`, and `isActive` fields to prevent accounting issues
+   - Now directly queries Aave for accurate debt and collateral information
+   - A position is considered active if `safe != address(0)`
+
+2. **Direct Protocol Integration**:
+   - Added direct queries to Aave for user debt and collateral data
+   - Added Uniswap V4 position queries for accurate position details
+   - Eliminates potential discrepancies between stored values and actual protocol state
+
+3. **Flexible Exit Strategy**:
+   - Added `swapEthForDebt` parameter to `exitStrategy` function
+   - Gives users control over whether to swap ETH for USDC when repaying debt
+   - Allows for more efficient exit strategies depending on market conditions
+
+4. **Improved Slippage Control**:
+   - Added `slippageBps` parameter to `startStrategy` function
+   - Allows users to set their own slippage tolerance in basis points
+   - Provides better protection against price movements during strategy execution
+
+These improvements make the contract more robust, accurate, and user-friendly while maintaining the core functionality of the leveraged LP strategy.
+
+---
+
+## 9. Extending or Debugging
 
 - **Add more pairs:** Start with USDC/ETH, but could generalize.
 - **Analytics:** Use events for P&L, APY, and health factor tracking.

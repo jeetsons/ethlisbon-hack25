@@ -5,7 +5,7 @@
   "scripts": {
     "test": "forge test",
     "build": "forge build",
-    "deploy:base": "forge script script/Deploy.s.sol:DeployScript --rpc-url ${BASE_RPC_URL} --broadcast --verify",
+    "deploy:base": "./deploy.sh",
     "deploy:base-sepolia": "forge script script/Deploy.s.sol:DeployScript --rpc-url ${BASE_SEPOLIA_RPC_URL} --broadcast --verify",
     "verify:base": "forge verify-contract --chain-id 8453 --watch",
     "verify:base-sepolia": "forge verify-contract --chain-id 84532 --watch",
@@ -20,5 +20,6 @@
     "gnosis"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "packageManager": "yarn@1.22.19+sha1.4ba7fc5c6e704fce2066ecbfb0b0d8976fe62447"
 }
