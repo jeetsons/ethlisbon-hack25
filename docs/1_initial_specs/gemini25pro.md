@@ -228,6 +228,7 @@ contract MainLogicContract is IERC721Receiver {
         return IERC721Receiver.onERC721Received.selector;
     }
 }
+```
 
 
 Key Functions in MainLogicContract:
@@ -354,7 +355,7 @@ function userManuallyClosedPosition() external {
 ```
 
 
-4.2. HookContract.sol (Uniswap V4 Hook)
+### 4.2. HookContract.sol (Uniswap V4 Hook)
 State Variables (Conceptual):
 
 ```
