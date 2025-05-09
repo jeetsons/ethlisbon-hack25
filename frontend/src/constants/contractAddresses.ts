@@ -1,4 +1,4 @@
-import { Address } from 'viem';
+import type { Address } from 'viem';
 import { baseChain } from './chains';
 
 // Contract addresses for Base chain (ID: 8453)

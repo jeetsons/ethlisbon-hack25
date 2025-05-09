@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import ConnectButton from './ConnectButton';
 import { useWallet } from '../contexts/WalletContext';
@@ -6,7 +6,24 @@ import { shortenAddress } from '../utils/address';
 import { baseChain } from '../constants/chains';
 
 const Layout: React.FC = () => {
-  const { isConnected, safeAddress, balance, chainId } = useWallet();
+  const { isConnected, isLoading, safeAddress, balance, chainId, createSafeAccount } = useWallet();
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Function to handle wallet creation
+  const handleCreateWallet = async () => {
+    setIsCreating(true);
+    try {
+      const newSafeAddress = await createSafeAccount();
+      if (newSafeAddress) {
+        console.log('New Safe wallet created:', newSafeAddress);
+      }
+    } catch (error) {
+      console.error('Failed to create Safe wallet:', error);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -17,7 +34,29 @@ const Layout: React.FC = () => {
               DeFi Safe Leveraged LP
             </Link>
           </div>
-          <ConnectButton />
+          <div className="flex items-center gap-3">
+            {/* Show Create Safe Wallet button when user is connected but doesn't have a Safe wallet */}
+            {isConnected && !safeAddress && (
+              <button
+                onClick={handleCreateWallet}
+                disabled={isCreating || isLoading}
+                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:bg-green-300 flex items-center"
+              >
+                {isCreating || isLoading ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Creating...
+                  </>
+                ) : (
+                  'Create Safe Wallet'
+                )}
+              </button>
+            )}
+            <ConnectButton />
+          </div>
         </div>
       </header>
 
