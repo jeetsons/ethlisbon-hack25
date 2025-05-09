@@ -15,6 +15,8 @@ contract DeployScript is Script {
     address constant POSITION_MANAGER = address(0); // Replace with actual Uniswap V4 Position Manager address on Base
     address constant USDC = address(0); // Replace with actual USDC address on Base
     address constant WETH = address(0); // Replace with actual WETH address on Base
+    address constant UNISWAP_ROUTER = address(0); // Replace with actual Uniswap V4 Router address on Base
+    uint24 constant POOL_FEE = 3000; // 0.3% fee tier
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -26,7 +28,9 @@ contract DeployScript is Script {
             POSITION_MANAGER,
             USDC,
             WETH,
-            address(0) // Temporary hook address
+            address(0), // Temporary hook address
+            UNISWAP_ROUTER,
+            POOL_FEE
         );
 
         // Deploy FeeCollectHook with the manager address
