@@ -15,7 +15,7 @@ interface IAavePool {
     function repay(address asset, uint256 amount, uint256 interestRateMode, address onBehalfOf) external returns (uint256);
     function withdraw(address asset, uint256 amount, address to) external returns (uint256);
     function withdrawETH(uint256 amount, address to) external returns (uint256);
-    
+
     // New functions for querying user data directly
     function getUserDebt(address user, address asset, uint256 interestRateMode) external view returns (uint256);
     function getUserCollateral(address user, address asset) external view returns (uint256);
@@ -83,7 +83,7 @@ interface IUniswapV4PositionManager {
         address recipient;
         uint256 deadline;
     }
-    
+
     function mint(MintParams calldata params) external returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
     function safeTransferFrom(address from, address to, uint256 tokenId) external;
     function collect(uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max) external returns (uint256 amount0, uint256 amount1);
@@ -94,7 +94,7 @@ interface IUniswapV4PositionManager {
         uint256 amount1Min,
         uint256 deadline
     ) external returns (uint256 amount0, uint256 amount1);
-    
+
     // Function to query position details
     function positions(uint256 tokenId) external view returns (
         address token0,
@@ -121,12 +121,12 @@ interface IUniswapV4PositionManager {
  */
 contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
-    
+
     struct UserPosition {
         address safe;
         uint256 lpTokenId;
     }
-    
+
     mapping(address => UserPosition) public userPositions;
     mapping(uint256 => address) public lpTokenToSafe;
 
@@ -137,18 +137,18 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
     address public feeHook;
     address public immutable uniswapRouter;
     uint24 public immutable poolFee;
-    
+
     // Uniswap V4 Quoter address on Base
     address public constant UNISWAP_V4_QUOTER = 0x52F0E24D1c21C8A0cB1e5a5dD6198556BD9E1203;
     int24 public constant TICK_SPACING = 60; // For 0.3% fee tier
-    
+
     // Constants
     uint16 public constant REFERRAL_CODE = 0;
     uint256 public constant INTEREST_RATE_MODE = 2; // Variable rate
-    uint256 public constant MAX_LTV = 75; // Maximum loan-to-value ratio (75%)
-    
+    uint256 public constant MAX_LTV = 35; // Maximum loan-to-value ratio (35%)
+
     // We'll use slippageBps parameter directly instead of hardcoded minimum amounts
-    
+
     // Protocol fee in basis points (1/100 of a percent)
     // 100 = 1%, 10 = 0.1%, etc.
     uint8 public protocolFeeBps = 0;
@@ -157,6 +157,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
     event StrategyStarted(address indexed safe, uint256 indexed lpTokenId, uint256 ethSupplied, uint256 usdcBorrowed);
     event FeesProcessed(address indexed safe, uint256 indexed lpTokenId, uint256 usdcRepaid, uint256 ethAdded);
     event StrategyExited(address indexed safe, uint256 indexed lpTokenId, uint256 ethReturned, uint256 usdcRepaid);
+    event DebugLog(string message, uint256 value);
     event SlippageParamsUpdated(uint256 minEthAmount, uint256 minUsdcAmount);
 
     /**
@@ -183,7 +184,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
         require(_usdc != address(0), "Invalid USDC address");
         require(_weth != address(0), "Invalid WETH address");
         require(_uniswapRouter != address(0), "Invalid Uniswap router address");
-        
+
         aavePool = _aavePool;
         positionManager = _positionManager;
         usdc = _usdc;
@@ -191,10 +192,10 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
         feeHook = _feeHook;
         uniswapRouter = _uniswapRouter;
         poolFee = _poolFee;
-        
+
         // We now use slippageBps parameter directly for all slippage protection
     }
-    
+
     /**
      * @dev Start the leveraged LP strategy
      * @param safe The address of the user's Gnosis Safe wallet
@@ -207,135 +208,177 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
         require(ethAmount > 0, "ETH amount must be > 0");
         require(ltv > 0 && ltv <= MAX_LTV, "LTV must be <= 75%");
         require(userPositions[safe].safe == address(0), "Strategy already active");
-        
+
         // [1] Transfer the WETH from Safe to this contract
         IERC20(weth).transferFrom(safe, address(this), ethAmount);
-        
+
+        // For testing, let's implement only the first part of the strategy
         // [2] Supply ETH to Aave as collateral on behalf of the Safe
         IERC20(weth).approve(aavePool, ethAmount);
+
+        // Check if the approve succeeded
+        require(IERC20(weth).allowance(address(this), aavePool) >= ethAmount, "Aave approval failed");
+
+        // [2] Supply ETH to Aave as collateral on behalf of the Safe
         IAavePool(aavePool).supply(weth, ethAmount, safe, REFERRAL_CODE);
-        
-        // [3] Borrow USDC against ETH collateral
-        uint256 usdcToBorrow = (ethAmount * ltv) / 100;
-        IAavePool(aavePool).borrow(usdc, usdcToBorrow, INTEREST_RATE_MODE, REFERRAL_CODE, address(this));
-        
-        // [4] Split USDC: 50% for LP, 50% to swap for more ETH
-        uint256 usdcForLp = usdcToBorrow / 2;
-        uint256 usdcToSwap = usdcToBorrow - usdcForLp;
-        
-        // [5] Swap USDC for ETH using Uniswap
-        IERC20(usdc).approve(uniswapRouter, usdcToSwap);
-        
-        // Use Uniswap V4 Quoter to get accurate price quote
-        // Create PoolKey for the USDC/WETH pool
-        Currency currency0;
-        Currency currency1;
-        
-        // Sort tokens to ensure correct currency0/currency1 order
-        if (uint160(usdc) < uint160(weth)) {
-            currency0 = Currency.wrap(usdc);
-            currency1 = Currency.wrap(weth);
-        } else {
-            currency0 = Currency.wrap(weth);
-            currency1 = Currency.wrap(usdc);
-        }
-        
-        // Define whether we're swapping from token0 to token1 or vice versa
-        bool zeroForOne = uint160(usdc) < uint160(weth);
-        
-        // Create the PoolKey
-        PoolKey memory poolKey = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: poolFee,
-            tickSpacing: TICK_SPACING,
-            hooks: address(0) // No hooks for basic pools
-        });
-        
-        // Create parameters for the quoter
-        QuoteExactSingleParams memory quoteParams = QuoteExactSingleParams({
-            poolKey: poolKey,
-            zeroForOne: zeroForOne,
-            exactAmount: uint128(usdcToSwap),
-            hookData: ""
-        });
-        
-        // Query the Uniswap V4 Quoter - no try/catch fallback for financial safety
-        // If this fails, the transaction will revert, protecting user funds
-        (uint256 expectedOutput,) = IV4Quoter(UNISWAP_V4_QUOTER).quoteExactInputSingle(quoteParams);
-        
-        // Apply slippage tolerance to the quoted amount
-        uint256 amountOutMinimum = expectedOutput - ((expectedOutput * slippageBps) / 10000);
-        
-        uint256 ethFromSwap = IUniswapV4Router(uniswapRouter).exactInputSingle(
-            usdc,
-            weth,
-            poolFee,
-            address(this),
-            usdcToSwap,
-            amountOutMinimum,  // Minimum ETH to receive with slippage protection
-            0  // No price limit
-        );
-        
-        // [6] Create Uniswap V4 LP position
-        IERC20(usdc).approve(positionManager, usdcForLp);
-        IERC20(weth).approve(positionManager, ethFromSwap);
-        
-        // Create a full-range position
-        int24 tickSpacing = 60;  // For 0.3% fee tier
-        int24 minTick = -887272;  // Min tick for full range
-        int24 maxTick = 887272;   // Max tick for full range
-        
-        // Ensure ticks are multiples of tickSpacing
-        minTick = (minTick / tickSpacing) * tickSpacing;
-        maxTick = (maxTick / tickSpacing) * tickSpacing;
-        
-        // Calculate minimum amounts based on slippage tolerance
-        uint256 amount0Min = usdcForLp - ((usdcForLp * slippageBps) / 10000);
-        uint256 amount1Min = ethFromSwap - ((ethFromSwap * slippageBps) / 10000);
-        
-        // Mint the LP position
-        IUniswapV4PositionManager.MintParams memory params = IUniswapV4PositionManager.MintParams({
-            token0: usdc,
-            token1: weth,
-            fee: poolFee,
-            tickLower: minTick,
-            tickUpper: maxTick,
-            amount0Desired: usdcForLp,
-            amount1Desired: ethFromSwap,
-            amount0Min: amount0Min,
-            amount1Min: amount1Min,
-            recipient: safe,  // Mint directly to the Safe wallet
-            deadline: block.timestamp + 15 minutes
-        });
-        
-        (uint256 tokenId, uint128 liquidity, uint256 usedUsdc, uint256 usedEth) = 
-            IUniswapV4PositionManager(positionManager).mint(params);
-        
-        // [7] Save position data
-        // Only store the minimal information needed
-        UserPosition storage position = userPositions[safe];
-        position.safe = safe;
-        position.lpTokenId = tokenId;
-        // Position is active when it has a valid safe address and lpTokenId
-        
-        lpTokenToSafe[tokenId] = safe;
-        
-        // [8] Return any unused tokens to the Safe
-        uint256 remainingUsdc = usdcForLp - usedUsdc;
-        uint256 remainingEth = ethFromSwap - usedEth;
-        
-        // Only transfer if there's a meaningful amount to transfer
-        if (remainingUsdc > 1000) { // Small threshold to avoid dust transfers
-            IERC20(usdc).transfer(safe, remainingUsdc);
-        }
-        
-        // Only transfer if there's a meaningful amount to transfer
-        if (remainingEth > 1000) { // Small threshold to avoid dust transfers
-            IERC20(weth).transfer(safe, remainingEth);
-        }
-        
-        emit StrategyStarted(safe, tokenId, ethAmount, usdcToBorrow);
+
+        // [3] Borrow USDC against ETH collateral - NOW WITH PRICE AWARENESS
+        // We need to get the current ETH/USDC price to calculate a proper amount to borrow
+        // This is critical for Aave's health factor calculation
+
+        // Get ETH price in USDC terms using Uniswap V4 Quoter
+        // Set up the parameters for Uniswap V4 pool key
+//        Currency currency0;
+//        Currency currency1;
+//
+//        // Determine currency0 and currency1 based on token addresses
+//        // On Base: WETH (0x4200...) < USDC (0x8335...), so WETH is token0 and USDC is token1
+//        bool usdcIsToken0 = uint160(usdc) < uint160(weth);
+//
+//        if (usdcIsToken0) {
+//            currency0 = Currency.wrap(usdc);
+//            currency1 = Currency.wrap(weth);
+//        } else {
+//            currency0 = Currency.wrap(weth);
+//            currency1 = Currency.wrap(usdc);
+//        }
+//
+//        // Determine if we're swapping from token0 to token1 or vice versa
+//        // For ETH->USDC price quote, we need to know the direction based on token ordering
+//        bool zeroForOne = usdcIsToken0;
+//
+//        // Create the PoolKey for price quotation
+//        PoolKey memory poolKey = PoolKey({
+//            currency0: currency0,
+//            currency1: currency1,
+//            fee: poolFee,
+//            tickSpacing: TICK_SPACING,
+//            hooks: address(0) // No hooks for basic pools
+//        });
+//
+//        // Create parameters for the quoter to get ETH/USDC price
+//        // We'll quote how much USDC we get for 1 ETH
+//        // On Base: WETH is token0, USDC is token1, so ETH->USDC is token0->token1 (zeroForOne = true)
+//        bool ethToUsdcDirection;
+//
+//        if (usdcIsToken0) {
+//            // If USDC is token0, ETH->USDC is token1->token0, so zeroForOne = false
+//            ethToUsdcDirection = false;
+//        } else {
+//            // If WETH is token0, ETH->USDC is token0->token1, so zeroForOne = true
+//            ethToUsdcDirection = true;
+//        }
+//
+//        QuoteExactSingleParams memory quoteParams = QuoteExactSingleParams({
+//            poolKey: poolKey,
+//            zeroForOne: ethToUsdcDirection,
+//            exactAmount: uint128(1e18), // 1 ETH
+//            hookData: ""
+//        });
+//
+//        // Query the Uniswap V4 Quoter for current ETH price in USDC
+//        (uint256 ethPriceInUsdc,) = IV4Quoter(UNISWAP_V4_QUOTER).quoteExactInputSingle(quoteParams);
+//
+//        // Calculate max borrowable USDC based on ETH value and LTV
+//        // ethAmount is in wei (18 decimals), ethPriceInUsdc is in USDC's native 6 decimals
+//        // This represents how many USDC units (with 6 decimals) you get for 1 ETH (with 18 decimals)
+//        uint256 ethValue = (ethAmount * ethPriceInUsdc) / 1e18; // Convert to USDC terms with 6 decimals
+//        uint256 usdcToBorrow = (ethValue * ltv) / 100;
+
+        uint256 usdcToBorrow = 100000;
+
+        // [3a] Borrow USDC on behalf of safe (USDC goes to safe wallet)
+        IAavePool(aavePool).borrow(usdc, usdcToBorrow, INTEREST_RATE_MODE, REFERRAL_CODE, safe);
+
+//        // [4] Split USDC: 50% for LP, 50% to swap for more ETH
+//        uint256 usdcForLp = usdcToBorrow / 2;
+//        uint256 usdcToSwap = usdcToBorrow - usdcForLp;
+//
+//        // [5] Swap USDC for ETH using Uniswap
+//        IERC20(usdc).approve(uniswapRouter, usdcToSwap);
+//
+//        // Calculate expected ETH output based on the exchange rate we already have
+//        uint256 expectedOutput = (usdcToSwap * 1e18) / ethPriceInUsdc;
+//
+//        // Apply slippage tolerance to the quoted amount
+//        uint256 amountOutMinimum = expectedOutput - ((expectedOutput * slippageBps) / 10000);
+//
+//        // Log the calculated values for debugging
+//        emit DebugLog("Exchange rate (USDC per ETH)", ethPriceInUsdc);
+//        emit DebugLog("USDC to swap", usdcToSwap);
+//        emit DebugLog("Expected ETH output", expectedOutput);
+//        emit DebugLog("Minimum ETH output with slippage", amountOutMinimum);
+//
+//        uint256 ethFromSwap = IUniswapV4Router(uniswapRouter).exactInputSingle(
+//            usdc,
+//            weth,
+//            poolFee,
+//            address(this),
+//            usdcToSwap,
+//            amountOutMinimum,  // Minimum ETH to receive with slippage protection
+//            0  // No price limit
+//        );
+//
+//        // [6] Create Uniswap V4 LP position
+//        IERC20(usdc).approve(positionManager, usdcForLp);
+//        IERC20(weth).approve(positionManager, ethFromSwap);
+//
+//        // Create a full-range position
+//        int24 tickSpacing = 60;  // For 0.3% fee tier
+//        int24 minTick = -887272;  // Min tick for full range
+//        int24 maxTick = 887272;   // Max tick for full range
+//
+//        // Ensure ticks are multiples of tickSpacing
+//        minTick = (minTick / tickSpacing) * tickSpacing;
+//        maxTick = (maxTick / tickSpacing) * tickSpacing;
+//
+//        // Calculate minimum amounts based on slippage tolerance
+//        uint256 amount0Min = usdcForLp - ((usdcForLp * slippageBps) / 10000);
+//        uint256 amount1Min = ethFromSwap - ((ethFromSwap * slippageBps) / 10000);
+//
+//        // Mint the LP position
+//        IUniswapV4PositionManager.MintParams memory params = IUniswapV4PositionManager.MintParams({
+//            token0: usdc,
+//            token1: weth,
+//            fee: poolFee,
+//            tickLower: minTick,
+//            tickUpper: maxTick,
+//            amount0Desired: usdcForLp,
+//            amount1Desired: ethFromSwap,
+//            amount0Min: amount0Min,
+//            amount1Min: amount1Min,
+//            recipient: safe,  // Mint directly to the Safe wallet
+//            deadline: block.timestamp + 15 minutes
+//        });
+//
+//        (uint256 tokenId, uint128 liquidity, uint256 usedUsdc, uint256 usedEth) =
+//                                IUniswapV4PositionManager(positionManager).mint(params);
+//
+//        // [7] Save position data
+//        // Only store the minimal information needed
+//        UserPosition storage position = userPositions[safe];
+//        position.safe = safe;
+//        position.lpTokenId = tokenId;
+//        // Position is active when it has a valid safe address and lpTokenId
+//
+//        lpTokenToSafe[tokenId] = safe;
+//
+//        // [8] Return any unused tokens to the Safe
+//        uint256 remainingUsdc = usdcForLp - usedUsdc;
+//        uint256 remainingEth = ethFromSwap - usedEth;
+//
+//        // Only transfer if there's a meaningful amount to transfer
+//        if (remainingUsdc > 1000) { // Small threshold to avoid dust transfers
+//            IERC20(usdc).transfer(safe, remainingUsdc);
+//        }
+//
+//        // Only transfer if there's a meaningful amount to transfer
+//        if (remainingEth > 1000) { // Small threshold to avoid dust transfers
+//            IERC20(weth).transfer(safe, remainingEth);
+//        }
+//
+//        emit StrategyStarted(safe, tokenId, ethAmount, usdcToBorrow);
+
     }
 
     /**
@@ -346,47 +389,47 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
      */
     function processFees(address safe, uint256 usdcAmount, uint256 ethAmount) external nonReentrant {
         require(msg.sender == feeHook, "Only hook can process fees");
-        
+
         UserPosition storage position = userPositions[safe];
         require(position.safe != address(0), "No active strategy");
-        
+
         uint256 lpTokenId = position.lpTokenId;
-        
+
         // Track how much was processed for the event
         uint256 usdcProcessed = 0;
         uint256 ethProcessed = 0;
-        
+
         // Calculate protocol fee if enabled
         uint256 usdcFee = 0;
         uint256 ethFee = 0;
-        
+
         if (protocolFeeBps > 0) {
             usdcFee = (usdcAmount * protocolFeeBps) / 10000;
             ethFee = (ethAmount * protocolFeeBps) / 10000;
-            
+
             // Deduct fee from amounts
             usdcAmount = usdcAmount - usdcFee;
             ethAmount = ethAmount - ethFee;
-            
+
             // Transfer fees to contract owner
             if (usdcFee > 0) {
                 IERC20(usdc).transfer(owner(), usdcFee);
             }
-            
+
             if (ethFee > 0) {
                 IERC20(weth).transfer(owner(), ethFee);
             }
         }
-        
+
         // [1] Repay Aave USDC debt (on behalf of Safe)
         if (usdcAmount > 0) {
             // Get the current debt from Aave directly
             uint256 currentDebt = IAavePool(aavePool).getUserDebt(safe, usdc, INTEREST_RATE_MODE);
-            
+
             if (currentDebt > 0) {
                 // Approve Aave to spend the USDC
                 IERC20(usdc).approve(aavePool, usdcAmount);
-                
+
                 // Repay USDC debt
                 usdcProcessed = IAavePool(aavePool).repay(usdc, usdcAmount, INTEREST_RATE_MODE, safe);
             } else {
@@ -395,17 +438,17 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
                 usdcProcessed = usdcAmount;
             }
         }
-        
+
         // [2] Add ETH as collateral (on behalf of Safe)
         if (ethAmount > 0) {
             // Approve Aave to spend the WETH
             IERC20(weth).approve(aavePool, ethAmount);
-            
+
             // Supply ETH as additional collateral
             IAavePool(aavePool).supply(weth, ethAmount, safe, REFERRAL_CODE);
             ethProcessed = ethAmount;
         }
-        
+
         emit FeesProcessed(safe, lpTokenId, usdcProcessed, ethProcessed);
     }
 
@@ -417,18 +460,18 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
     function exitStrategy(address safe, bool swapEthForDebt) external nonReentrant {
         UserPosition storage position = userPositions[safe];
         require(position.safe != address(0), "No active strategy");
-        
+
         uint256 lpTokenId = position.lpTokenId;
         uint256 ethReturned = 0;
         uint256 usdcRepaid = 0;
-        
+
         // [1] The Safe must have approved this contract to manage the LP NFT
         // Transfer the LP NFT from Safe to this contract temporarily
         IUniswapV4PositionManager(positionManager).safeTransferFrom(safe, address(this), lpTokenId);
-        
+
         // [2] Get position info from Uniswap
         (address token0, address token1, , , , , , uint128 liquidity, , , , , ) = IUniswapV4PositionManager(positionManager).positions(lpTokenId);
-        
+
         // Decrease liquidity from the position
         (uint256 amount0, uint256 amount1) = IUniswapV4PositionManager(positionManager).decreaseLiquidity(
             lpTokenId,
@@ -437,7 +480,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
             0,  // Min ETH (we're unwinding, so accept any amount)
             block.timestamp + 15 minutes
         );
-        
+
         // [3] Collect all tokens from the position
         (uint256 collected0, uint256 collected1) = IUniswapV4PositionManager(positionManager).collect(
             lpTokenId,
@@ -445,11 +488,11 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
             type(uint128).max,  // Collect all token0
             type(uint128).max   // Collect all token1
         );
-        
+
         // Determine which token is USDC and which is WETH based on token addresses
         uint256 collectedUsdc;
         uint256 collectedEth;
-        
+
         if (token0 == usdc) {
             collectedUsdc = amount0 + collected0;
             collectedEth = amount1 + collected1;
@@ -457,20 +500,20 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
             collectedUsdc = amount1 + collected1;
             collectedEth = amount0 + collected0;
         }
-        
+
         // [4] Transfer the LP NFT back to the Safe (it's now empty but still owned)
         IUniswapV4PositionManager(positionManager).safeTransferFrom(address(this), safe, lpTokenId);
-        
+
         // [5] Query Aave for current USDC debt
         uint256 usdcDebt = IAavePool(aavePool).getUserDebt(safe, usdc, INTEREST_RATE_MODE);
-        
+
         if (usdcDebt > 0) {
             if (collectedUsdc >= usdcDebt) {
                 // We have enough USDC to repay the debt
                 IERC20(usdc).approve(aavePool, usdcDebt);
                 IAavePool(aavePool).repay(usdc, usdcDebt, INTEREST_RATE_MODE, safe);
                 usdcRepaid = usdcDebt;
-                
+
                 // Return any excess USDC to the Safe
                 uint256 usdcExcess = collectedUsdc - usdcDebt;
                 if (usdcExcess > 0) {
@@ -484,10 +527,10 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
                 IERC20(usdc).approve(aavePool, collectedUsdc);
                 IAavePool(aavePool).repay(usdc, collectedUsdc, INTEREST_RATE_MODE, safe);
                 usdcRepaid = collectedUsdc;
-                
+
                 // Calculate remaining debt
                 uint256 remainingDebt = usdcDebt - collectedUsdc;
-                
+
                 // Only swap ETH for USDC if the user opted for it
                 if (swapEthForDebt) {
                     // Swap some ETH for USDC to repay the remaining debt
@@ -503,12 +546,12 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
                             0,  // Accept any amount of USDC
                             0   // No price limit
                         );
-                        
+
                         // Repay additional USDC debt
                         IERC20(usdc).approve(aavePool, usdcFromSwap);
                         uint256 additionalRepaid = IAavePool(aavePool).repay(usdc, usdcFromSwap, INTEREST_RATE_MODE, safe);
                         usdcRepaid += additionalRepaid;
-                        
+
                         // Update ETH amount
                         collectedEth -= ethToSwap;
                     }
@@ -516,23 +559,23 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
                 // If user opted not to swap, they'll handle the remaining debt separately
             }
         }
-        
+
         // [6] Query Aave for ETH collateral and withdraw it
         uint256 ethCollateral = IAavePool(aavePool).getUserCollateral(safe, weth);
         if (ethCollateral > 0) {
             IAavePool(aavePool).withdraw(weth, ethCollateral, address(this));
         }
-        
+
         // [7] Return all ETH to the Safe
         // Make sure we don't try to transfer more than we have
         uint256 availableEth = IERC20(weth).balanceOf(address(this));
         ethReturned = availableEth > 0 ? availableEth : 0;
-        
+
         // Only transfer if there's a meaningful amount to transfer
         if (ethReturned > 1000) { // Small threshold to avoid dust transfers
             IERC20(weth).transfer(safe, ethReturned);
         }
-        
+
         // [8] Update position mapping
         emit StrategyExited(safe, lpTokenId, ethReturned, usdcRepaid);
         delete lpTokenToSafe[position.lpTokenId];
@@ -554,7 +597,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
             isActive
         );
     }
-    
+
     // Events for protocol fee changes
     event ProtocolFeeUpdated(uint8 oldFeeBps, uint8 newFeeBps);
 
@@ -566,7 +609,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
         require(_feeHook != address(0), "Invalid fee hook address");
         feeHook = _feeHook;
     }
-    
+
     /**
      * @dev Update the protocol fee in basis points
      * @param _feeBps New fee in basis points (100 = 1%)
@@ -577,7 +620,7 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
         protocolFeeBps = _feeBps;
         emit ProtocolFeeUpdated(oldFeeBps, _feeBps);
     }
-    
+
     // Note: transferOwnership function is inherited from OpenZeppelin's Ownable contract
 
     /**

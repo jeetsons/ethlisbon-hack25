@@ -1,0 +1,29 @@
+No files changed, compilation skipped
+Script ran successfully.
+
+== Logs ==
+  LeveragedLPManager deployed at: 0x8442aE593Dee7D8644BA23BA67a626BF64f6F2e6
+  FeeCollectHook deployed at: 0x9d64C9fE002913b741C0c72C2e3146EAE50924A8
+
+## Setting up 1 EVM.
+
+==========================
+
+Chain 8453
+
+Estimated gas price: 0.002848308 gwei
+
+Estimated total gas used for script: 3837879
+
+Estimated amount required: 0.000010931461458732 ETH
+
+==========================
+
+
+==========================
+
+ONCHAIN EXECUTION COMPLETE & SUCCESSFUL.
+
+Transactions saved to: /Users/tchan/repo/ai/ethlisbon-hack25/contracts/broadcast/Deploy.s.sol/8453/run-latest.json
+
+Sensitive values saved to: /Users/tchan/repo/ai/ethlisbon-hack25/contracts/cache/Deploy.s.sol/8453/run-latest.json
