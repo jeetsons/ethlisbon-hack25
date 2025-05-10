@@ -71,7 +71,7 @@ const ABIs = {
 const config = {
   // Contract addresses
   addresses: {
-    leveragedLPManager: "0x6A96E1Bd99aC592dAf59d514fb714a4ceEc5c89E", // LeveragedLPManager on Base
+    leveragedLPManager: "0x4f9F66FE2Ca8B793F914709C45744402f3043940", // LeveragedLPManager on Base
     weth: "0x4200000000000000000000000000000000000006", // WETH on Base
     usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
     safe: "0x37adcff072f44bec0413029e7bfd785ca0467143", // Our existing Safe address
@@ -272,9 +272,10 @@ async function executeSafeTransaction(safeSdk, txData, description) {
     
     // Use a higher gas limit for complex transactions like startStrategy
     const options = { 
-      gasLimit: description === "StartStrategy" ? 2000000 : 1000000 
+      gasLimit: description === "StartStrategy" ? 1500000 : 1000000,
+      maxFeePerGas: ethers.utils.parseUnits("0.002", "gwei"),
+      maxPriorityFeePerGas: ethers.utils.parseUnits("0.0000001", "gwei"),
     };
-    console.log(`Using gas limit of ${options.gasLimit} for ${description}`);
     
     const executeTxResponse = await safeSdk.executeTransaction(signedSafeTx, options);
     await executeTxResponse.transactionResponse?.wait();

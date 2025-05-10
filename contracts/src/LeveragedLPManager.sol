@@ -53,19 +53,20 @@ struct PoolKey {
     address hooks;
 }
 
-// Define the QuoteExactSingleParams struct
-struct QuoteExactSingleParams {
-    PoolKey poolKey;
-    bool zeroForOne;
-    uint128 exactAmount;
-    bytes hookData;
-}
-
-// Uniswap V4 Quoter interface
-interface IV4Quoter {
-    function quoteExactInputSingle(QuoteExactSingleParams memory params)
+// Chainlink Price Feed Interface
+interface AggregatorV3Interface {
+    function latestRoundData()
         external
-        returns (uint256 amountOut, uint256 gasEstimate);
+        view
+        returns (
+            uint80 roundId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        );
+
+    function decimals() external view returns (uint8);
 }
 
 // Interfaces for Uniswap V4 Position Manager
@@ -138,9 +139,8 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
     address public immutable uniswapRouter;
     uint24 public immutable poolFee;
 
-    // Uniswap V4 Quoter address on Base
-    address public constant UNISWAP_V4_QUOTER = 0x52F0E24D1c21C8A0cB1e5a5dD6198556BD9E1203;
-    int24 public constant TICK_SPACING = 60; // For 0.3% fee tier
+    // Chainlink ETH/USD Price Feed address on Base
+    address public constant ETH_USD_PRICE_FEED = 0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70;
 
     // Constants
     uint16 public constant REFERRAL_CODE = 0;
@@ -223,69 +223,46 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
         IAavePool(aavePool).supply(weth, ethAmount, safe, REFERRAL_CODE);
 
         // [3] Borrow USDC against ETH collateral - NOW WITH PRICE AWARENESS
-        // We need to get the current ETH/USDC price to calculate a proper amount to borrow
+        // We need to get the current ETH/USD price to calculate a proper amount to borrow
         // This is critical for Aave's health factor calculation
 
-        // Get ETH price in USDC terms using Uniswap V4 Quoter
-        // Set up the parameters for Uniswap V4 pool key
-        Currency currency0;
-        Currency currency1;
+        // Get ETH price in USD terms using Chainlink Price Feed
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(ETH_USD_PRICE_FEED);
 
-        // Determine currency0 and currency1 based on token addresses
-        // On Base: WETH (0x4200...) < USDC (0x8335...), so WETH is token0 and USDC is token1
-        bool usdcIsToken0 = uint160(usdc) < uint160(weth);
+        // Get the latest price data from Chainlink
+        (
+            /* uint80 roundID */,
+            int256 price,
+            /* uint startedAt */,
+            /* uint timeStamp */,
+            /* uint80 answeredInRound */
+        ) = priceFeed.latestRoundData();
 
-        if (usdcIsToken0) {
-            currency0 = Currency.wrap(usdc);
-            currency1 = Currency.wrap(weth);
-        } else {
-            currency0 = Currency.wrap(weth);
-            currency1 = Currency.wrap(usdc);
+        // Ensure the price is positive
+        require(price > 0, "Invalid ETH price");
+
+        // Get the number of decimals in the price feed
+        uint8 decimals = priceFeed.decimals();
+
+        // Convert the price to USDC terms (6 decimals)
+        // Chainlink typically returns price with 8 decimals, so we need to adjust
+        uint256 ethPriceInUsd = uint256(price);
+
+        // If decimals is not 6 (USDC decimals), adjust the price
+        if (decimals > 6) {
+            ethPriceInUsd = ethPriceInUsd / (10 ** (decimals - 6));
+        } else if (decimals < 6) {
+            ethPriceInUsd = ethPriceInUsd * (10 ** (6 - decimals));
         }
 
-        // Determine if we're swapping from token0 to token1 or vice versa
-        // For ETH->USDC price quote, we need to know the direction based on token ordering
-        bool zeroForOne = usdcIsToken0;
-
-        // Create the PoolKey for price quotation
-        PoolKey memory poolKey = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: poolFee,
-            tickSpacing: TICK_SPACING,
-            hooks: address(0) // No hooks for basic pools
-        });
-
-        // Create parameters for the quoter to get ETH/USDC price
-        // We'll quote how much USDC we get for 1 ETH
-        // On Base: WETH is token0, USDC is token1, so ETH->USDC is token0->token1 (zeroForOne = true)
-        bool ethToUsdcDirection;
-
-        if (usdcIsToken0) {
-            // If USDC is token0, ETH->USDC is token1->token0, so zeroForOne = false
-            ethToUsdcDirection = false;
-        } else {
-            // If WETH is token0, ETH->USDC is token0->token1, so zeroForOne = true
-            ethToUsdcDirection = true;
-        }
-
-        QuoteExactSingleParams memory quoteParams = QuoteExactSingleParams({
-            poolKey: poolKey,
-            zeroForOne: ethToUsdcDirection,
-            exactAmount: uint128(1e18), // 1 ETH
-            hookData: ""
-        });
-
-        // Query the Uniswap V4 Quoter for current ETH price in USDC
-        (uint256 ethPriceInUsdc,) = IV4Quoter(UNISWAP_V4_QUOTER).quoteExactInputSingle(quoteParams);
+        // Use ethPriceInUsd as our price in USDC terms
+        uint256 ethPriceInUsdc = ethPriceInUsd;
 
         // Calculate max borrowable USDC based on ETH value and LTV
         // ethAmount is in wei (18 decimals), ethPriceInUsdc is in USDC's native 6 decimals
         // This represents how many USDC units (with 6 decimals) you get for 1 ETH (with 18 decimals)
         uint256 ethValue = (ethAmount * ethPriceInUsdc) / 1e18; // Convert to USDC terms with 6 decimals
-//        uint256 usdcToBorrow = (ethValue * ltv) / 100;
-
-        uint256 usdcToBorrow = 100000;
+        uint256 usdcToBorrow = (ethValue * ltv) / 100;
 
         // [3a] Borrow USDC on behalf of safe (USDC goes to safe wallet)
         IAavePool(aavePool).borrow(usdc, usdcToBorrow, INTEREST_RATE_MODE, REFERRAL_CODE, safe);

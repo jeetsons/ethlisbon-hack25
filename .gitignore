@@ -31,3 +31,4 @@ coverage
 
 # Mac OS files
 .DS_Store
+contracts/deploy-output.txt
