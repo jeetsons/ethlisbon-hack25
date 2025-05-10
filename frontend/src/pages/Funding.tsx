@@ -2,13 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useWallet } from '../contexts/WalletContext';
 
 const Funding: React.FC = () => {
-  const {
-    isConnected,
-    safeAddress,
-    depositETH,
-    balance: safeBalance,
-    fetchBalance,
-  } = useWallet();
+  const { isConnected, safeAddress, depositETH, balance: safeBalance, fetchBalance } = useWallet();
 
   const [amount, setAmount] = useState('');
   const [isDepositing, setIsDepositing] = useState(false);
@@ -66,9 +60,7 @@ const Funding: React.FC = () => {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="bg-white p-4 rounded-md border border-gray-200 mb-6">
-          <p className="text-black">
-            Please connect your Gnosis Pay wallet to fund it with ETH.
-          </p>
+          <p className="text-black">Please connect your Gnosis Pay wallet to fund it with ETH.</p>
         </div>
       </div>
     );
@@ -124,7 +116,7 @@ const Funding: React.FC = () => {
             <input
               id="amount"
               type="number"
-              min="0.001"
+              min="0.0001"
               step="0.001"
               value={amount}
               onChange={e => setAmount(e.target.value)}

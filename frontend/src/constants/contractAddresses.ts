@@ -6,21 +6,21 @@ export interface ContractAddresses {
   leveragedLPManager: Address;
   feeCollectHook: Address;
   aavePool: Address;
+  aaveDataProvider: Address;
   uniswapV4PositionManager: Address;
   usdc: Address;
   weth: Address;
 }
 
-// These addresses should be updated with actual deployed contract addresses
-// For production, consider using environment variables
 export const contractAddresses: Record<number, ContractAddresses> = {
   // Base Chain
   [baseChain.id]: {
-    leveragedLPManager: '0x7DD8fB835e39aeb631C1Be80dA0fcb6E0C17D979' as Address,
-    feeCollectHook: '0xE94DFcAb03D61fD2D7bAc89753f11EccDb789d61' as Address,
-    aavePool: '0x2345678901234567890123456789012345678901' as Address,
+    leveragedLPManager: '0x4f9F66FE2Ca8B793F914709C45744402f3043940' as Address,
+    feeCollectHook: '0xE94DFcAb03D61fD2D7bAC89753f11EccDb789d61' as Address,
+    aavePool: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5' as Address,
+    aaveDataProvider: '0x2d8A3C5677189723C4cB8873CfC9C8976FDF38Ac' as Address, // Aave V3 Protocol Data Provider
     uniswapV4PositionManager: '0x8e2badc74a4560f7670d79fc67a5bf5b0d802a48' as Address,
-    usdc: '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA' as Address, // Base USDC
+    usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address, // Base USDC
     weth: '0x4200000000000000000000000000000000000006' as Address, // Base WETH
   },
 };

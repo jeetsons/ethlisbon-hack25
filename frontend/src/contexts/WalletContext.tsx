@@ -11,17 +11,9 @@ import type {
   SafeAccountConfig,
   SafeDeploymentConfig,
 } from '@safe-global/protocol-kit';
-import EthersAdapter from '@safe-global/safe-ethers-lib';
-import SafeApiKit from '@safe-global/api-kit';
 import { getContractAddresses } from '../constants/contractAddresses';
+import { ABIs } from '../abis';
 
-// Import ABIs
-import LeveragedLPManagerABI from '../abis/LeveragedLPManager.json';
-import FeeCollectHookABI from '../abis/FeeCollectHook.json';
-import ERC20ABI from '../abis/ERC20.json';
-import ERC721ABI from '../abis/ERC721.json';
-
-// Add TypeScript declaration for window.ethereum
 declare global {
   interface Window {
     ethereum?: any;
@@ -43,16 +35,11 @@ interface WalletContextProps {
   createSafeAccount: () => Promise<string | null>;
   disconnect: () => void;
   fetchBalance: (address?: string | Address) => Promise<void>;
-  sendTransaction: (to: string, value: string, data?: string) => Promise<string>;
-  approveERC20: (tokenAddress: string, spender: string, amount: string) => Promise<string>;
-  approveERC721: (tokenAddress: string, spender: string, tokenId: string) => Promise<string>;
-  depositETH: (amount: string) => Promise<string>;
-  getTransactionHistory: () => Promise<any[]>;
   startStrategy: (ethAmount: string, ltv: number) => Promise<string>;
   exitStrategy: (positionId: string) => Promise<string>;
-  getUserPosition: () => Promise<any>;
-  isApprovedForFeeHook: (tokenId: string) => Promise<boolean>;
-  isApprovedForExit: (tokenId: string) => Promise<boolean>;
+  depositETH: (amount: string) => Promise<string>;
+  convertEthToWeth: (amount: string) => Promise<string>;
+  completeApprovalProcess: (ethAmount: string, ltv: number) => Promise<boolean>;
 }
 
 // Create context with default values
@@ -66,17 +53,12 @@ const WalletContext = createContext<WalletContextProps>({
   connect: async () => false,
   createSafeAccount: async () => null,
   disconnect: () => {},
-  fetchBalance: async () => {},
-  sendTransaction: async () => '',
-  approveERC20: async () => '',
-  approveERC721: async () => '',
   depositETH: async () => '',
-  getTransactionHistory: async () => [],
+  fetchBalance: async () => {},
   startStrategy: async () => '',
   exitStrategy: async () => '',
-  getUserPosition: async () => ({}),
-  isApprovedForFeeHook: async () => false,
-  isApprovedForExit: async () => false,
+  convertEthToWeth: async () => '',
+  completeApprovalProcess: async () => '',
 });
 
 // Define props for WalletProvider
@@ -110,27 +92,99 @@ const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   const [feeCollectHook, setFeeCollectHook] = useState<Contract | null>(null);
   const [positionManager, setPositionManager] = useState<Contract | null>(null);
 
-  // Initialize contract instances
-  useEffect(() => {
-    if (provider && signer && chainId === baseChain.id) {
-      const addresses = getContractAddresses(chainId);
+  /**
+   * Initialize contract instances needed for the strategy
+   * @param provider - Ethers provider
+   * @returns Object containing contract instances
+   */
+  const initializeContracts = (provider: providers.Web3Provider | providers.JsonRpcProvider) => {
+    console.log('Initializing contract interfaces...');
 
-      // Initialize contract instances
-      const lpManager = new Contract(addresses.leveragedLPManager, LeveragedLPManagerABI, signer);
-      setLeveragedLPManager(lpManager);
-
-      const feeHook = new Contract(addresses.feeCollectHook, FeeCollectHookABI, signer);
-      setFeeCollectHook(feeHook);
-
-      const posManager = new Contract(
-        addresses.uniswapV4PositionManager,
-        ERC721ABI, // Using ERC721 interface for position manager
-        signer
-      );
-      setPositionManager(posManager);
+    // Get contract addresses
+    const addresses = getContractAddresses(chainId);
+    if (!addresses) {
+      throw new Error('Contract addresses not found for this network');
     }
-  }, [provider, signer, chainId]);
 
+    // Main protocol contracts
+    const leveragedLPManager = new Contract(
+      addresses.leveragedLPManager,
+      ABIs.LeveragedLPManager,
+      provider
+    );
+
+    // Token contracts
+    const weth = new ethers.Contract(addresses.weth, ABIs.WETH, provider);
+
+    const usdc = new ethers.Contract(addresses.usdc, ABIs.ERC20, provider);
+
+    // Aave contracts
+    const aaveDataProvider = new ethers.Contract(
+      addresses.aaveDataProvider,
+      ABIs.AaveDataProvider,
+      provider
+    );
+
+    return { leveragedLPManager, weth, usdc, aaveDataProvider };
+  };
+
+  /**
+   * Create and execute a Safe transaction
+   * @param safeSdk - Safe SDK instance
+   * @param txData - Transaction data
+   * @param description - Description of the transaction for logging
+   * @returns Transaction receipt
+   */
+  const executeSafeTransaction = async (safeSdk: any, txData: any, description: string) => {
+    try {
+      console.log(`Creating Safe transaction for ${description}...`);
+      const safeTransaction = await safeSdk.createTransaction({ safeTransactionData: txData });
+      const signedSafeTx = await safeSdk.signTransaction(safeTransaction);
+
+      console.log(`Executing Safe transaction for ${description}...`);
+
+      // Use a higher gas limit for complex transactions like startStrategy
+      const options = {
+        gasLimit: description === 'StartStrategy' ? 1500000 : 1000000,
+        maxFeePerGas: utils.parseUnits('0.002', 'gwei'),
+        maxPriorityFeePerGas: utils.parseUnits('0.0000001', 'gwei'),
+      };
+
+      const executeTxResponse = await safeSdk.executeTransaction(signedSafeTx, options);
+      if (executeTxResponse.transactionResponse) {
+        await executeTxResponse.transactionResponse.wait();
+      }
+
+      console.log(
+        `${description} successful! Tx hash: ${executeTxResponse.transactionResponse?.hash}`
+      );
+      return executeTxResponse;
+    } catch (error) {
+      console.error(
+        `Error executing Safe transaction for ${description}: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw error;
+    }
+  };
+
+  /**
+   * Fund the Safe with ETH
+   * @param signer - Ethers signer
+   * @param safeAddress - Address of the Safe to fund
+   * @returns Transaction receipt
+   */
+  const fundSafeWithEth = async (signer: Signer, safeAddress: string, amount: string) => {
+    console.log(`Sending ${amount} ETH to Safe...`);
+    const tx = await signer.sendTransaction({
+      to: safeAddress,
+      value: utils.parseEther(amount),
+    });
+
+    await tx.wait();
+    console.log(`Successfully sent ETH to Safe. Tx hash: ${tx.hash}`);
+    return tx;
+  };
+  
   // Connect wallet
   const connect = async (): Promise<boolean> => {
     setIsConnecting(true);
@@ -403,102 +457,6 @@ const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     }
   };
 
-  // Send transaction
-  const sendTransaction = async (to: string, value: string, data = '0x') => {
-    if (!safeAddress || !signer || !safeSDK) {
-      throw new Error('Wallet not connected or Safe not initialized');
-    }
-
-    try {
-      // Create transaction
-      const safeTransactionData = {
-        to,
-        value: utils.parseEther(value).toString(),
-        data,
-      };
-
-      // Create and execute transaction
-      const safeTransaction = await safeSDK.createTransaction({ safeTransactionData });
-      const txResponse = await safeSDK.executeTransaction(safeTransaction);
-      const receipt = await txResponse.transactionResponse?.wait();
-
-      // Refresh balance
-      await fetchBalance();
-
-      return receipt.transactionHash;
-    } catch (error) {
-      console.error('Transaction error:', error);
-      throw error;
-    }
-  };
-
-  // Approve ERC20 token for spending
-  const approveERC20 = async (
-    tokenAddress: string,
-    spender: string,
-    amount: string
-  ): Promise<string> => {
-    try {
-      if (!provider || !signer || !safeAddress || !safeSDK) {
-        throw new Error('No provider, signer, or Safe address available');
-      }
-
-      // Create ERC20 contract instance
-      const tokenContract = new Contract(tokenAddress, ERC20ABI, provider);
-
-      // Get token decimals
-      const decimals = await tokenContract.decimals();
-
-      // Create approval transaction data
-      const approvalData = tokenContract.interface.encodeFunctionData('approve', [
-        spender,
-        utils.parseUnits(amount, decimals),
-      ]);
-
-      // Create and execute transaction
-      const safeTransactionData = {
-        to: tokenAddress,
-        value: '0',
-        data: approvalData,
-      };
-
-      const safeTransaction = await safeSDK.createTransaction({ safeTransactionData });
-      const txResponse = await safeSDK.executeTransaction(safeTransaction);
-      const receipt = await txResponse.transactionResponse?.wait();
-
-      return receipt.transactionHash;
-    } catch (error) {
-      console.error('ERC20 approval error:', error);
-      throw error;
-    }
-  };
-
-  // Approve ERC721 token (NFT)
-  const approveERC721 = async (
-    tokenAddress: string,
-    spender: string,
-    tokenId: string
-  ): Promise<string> => {
-    if (!safeAddress || !signer) {
-      throw new Error('Wallet not connected');
-    }
-
-    try {
-      // Create ERC721 contract instance
-      const nftContract = new Contract(tokenAddress, ERC721ABI, signer);
-
-      // In a simplified approach for the hackathon, we'll call approve directly
-      // In a production environment with Safe, we would use the Safe SDK
-      const tx = await nftContract.approve(spender, tokenId);
-      const receipt = await tx.wait();
-
-      return receipt.transactionHash;
-    } catch (error) {
-      console.error('ERC721 approval error:', error);
-      throw error;
-    }
-  };
-
   // Deposit ETH to Safe
   const depositETH = async (amount: string) => {
     if (!signer || !safeAddress) {
@@ -529,208 +487,454 @@ const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     }
   };
 
-  // Start leveraged LP strategy
-  const startStrategy = async (ethAmount: string, ltv: number) => {
-    if (!safeAddress || !signer || !leveragedLPManager) {
-      throw new Error('Wallet not connected or contracts not initialized');
+  /**
+   * Convert ETH to WETH in the Safe
+   * @param safeAddress - Address of the Safe
+   * @param safeSdk - Safe SDK instance
+   * @param contracts - Object containing contract instances
+   * @returns Transaction receipt
+   */
+  const convertEthToWeth = async (amount: string) => {
+    if (!safeAddress || !signer || !safeSDK) {
+      throw new Error('Wallet not connected or Safe not initialized');
     }
 
     try {
-      // Validate inputs
-      if (parseFloat(ethAmount) <= 0) {
-        throw new Error('ETH amount must be greater than 0');
+      console.log('Converting ETH to WETH in the Safe...');
+
+      // Get contract addresses
+      const addresses = getContractAddresses(chainId);
+      if (!addresses || !addresses.weth) {
+        throw new Error('WETH address not found for this network');
       }
 
-      if (ltv < 0 || ltv > 75) {
-        throw new Error('LTV must be between 0 and 75');
-      }
+      // Send ETH directly to the Safe first
+      await fundSafeWithEth(signer, safeAddress, amount);
 
-      // Create transaction data for startStrategy
-      const txData = leveragedLPManager.interface.encodeFunctionData('startStrategy', [
-        utils.parseEther(ethAmount),
-        ltv,
-      ]);
+      // Check current ETH balance in the Safe
+      const ethBalance = await safeSDK.getBalance();
+      console.log(`Current ETH balance in Safe: ${utils.formatEther(ethBalance)} ETH`);
 
-      // Create and execute transaction
-      const safeTransactionData = {
-        to: leveragedLPManager.address,
-        value: '0',
-        data: txData,
+      // Initialize contracts
+      const contracts = initializeContracts(provider!);
+
+      // Prepare transaction data to call WETH.deposit() with ETH value
+      const wethDepositData = {
+        to: addresses.weth,
+        data: contracts.weth.interface.encodeFunctionData('deposit'),
+        value: utils.parseEther(amount).toString(),
       };
 
-      const safeTransaction = await safeSDK.createTransaction({ safeTransactionData });
-      const txResponse = await safeSDK.executeTransaction(safeTransaction);
-      const receipt = await txResponse.transactionResponse?.wait();
+      // Execute the transaction through the Safe
+      const result = await executeSafeTransaction(safeSDK, wethDepositData, 'Convert ETH to WETH');
+
+      // Verify WETH balance after conversion
+      const wethBalance = await contracts.weth.balanceOf(safeAddress);
+      console.log(`WETH balance after conversion: ${utils.formatEther(wethBalance)} WETH`);
+
+      // Get transaction hash
+      let txHash = '';
+      if (result.transactionResponse && result.transactionResponse.hash) {
+        txHash = result.transactionResponse.hash;
+      }
 
       // Refresh balance
       await fetchBalance();
 
-      return receipt.transactionHash;
+      return txHash;
     } catch (error) {
-      console.error('Start strategy error:', error);
+      console.error(
+        `Error converting ETH to WETH: ${error instanceof Error ? error.message : String(error)}`
+      );
       throw error;
     }
   };
 
-  // Exit leveraged LP strategy
-  const exitStrategy = async (positionId: string): Promise<string> => {
-    if (!safeAddress || !signer || !leveragedLPManager) {
-      throw new Error('Wallet not connected or contracts not initialized');
-    }
-
+  /**
+   * Approve WETH for the LeveragedLPManager contract
+   * @param safeAddress - Address of the Safe
+   * @param safeSdk - Safe SDK instance
+   * @param contracts - Object containing contract instances
+   * @param ethAmountWei - Amount of ETH to approve in Wei (BigNumber)
+   */
+  const approveWethForLeveragedLPManager = async (
+    safeAddress: string,
+    safeSdk: any,
+    contracts: any,
+    ethAmountWei = utils.parseEther('0.0001')
+  ) => {
     try {
-      // Check if position exists
-      const position = await leveragedLPManager.positions(safeAddress, positionId);
+      console.log('Checking if WETH allowance is needed...');
 
-      if (!position || position.tokenId.toString() === '0') {
-        throw new Error('Position not found');
+      // Get contract addresses
+      const addresses = getContractAddresses(chainId);
+      if (!addresses) {
+        throw new Error('Contract addresses not found for this network');
       }
 
-      // Create transaction data for exitStrategy
-      const txData = leveragedLPManager.interface.encodeFunctionData('exitStrategy', [positionId]);
+      const wethAllowance = await contracts.weth.allowance(
+        safeAddress,
+        addresses.leveragedLPManager
+      );
+      console.log(`Current WETH allowance: ${utils.formatEther(wethAllowance)} WETH`);
+      console.log(`Required WETH allowance: ${utils.formatEther(ethAmountWei)} WETH`);
 
-      // Create and execute transaction
-      const safeTransactionData = {
-        to: leveragedLPManager.address,
-        value: '0',
-        data: txData,
-      };
+      // Only approve if current allowance is less than what we need
+      if (wethAllowance.lt(ethAmountWei)) {
+        // Create approval transaction data
+        const approveData = contracts.weth.interface.encodeFunctionData('approve', [
+          addresses.leveragedLPManager,
+          ethers.constants.MaxUint256, // Approve maximum amount
+        ]);
 
-      const safeTransaction = await safeSDK.createTransaction({ safeTransactionData });
-      const txResponse = await safeSDK.executeTransaction(safeTransaction);
-      const receipt = await txResponse.transactionResponse?.wait();
+        const approvalTxData = {
+          to: addresses.weth,
+          data: approveData,
+          value: '0',
+        };
 
-      // Refresh balance
-      await fetchBalance();
-
-      return receipt.transactionHash;
+        // Execute the approval transaction
+        await executeSafeTransaction(safeSdk, approvalTxData, 'WETH approval');
+      } else {
+        console.log('WETH already approved for LeveragedLPManager.');
+      }
     } catch (error) {
-      console.error('Exit strategy error:', error);
+      console.error(
+        `Error in WETH approval process: ${error instanceof Error ? error.message : String(error)}`
+      );
       throw error;
     }
   };
 
-  // Get user's position
-  const getUserPosition = async () => {
-    if (!safeAddress || !leveragedLPManager) {
-      throw new Error('Wallet not connected or contracts not initialized');
-    }
-
+  /**
+   * Approve USDC for the LeveragedLPManager contract
+   * @param safeAddress - Address of the Safe
+   * @param safeSdk - Safe SDK instance
+   * @param contracts - Object containing contract instances
+   * @param ethAmount - Amount of ETH as a string
+   * @param ltv - Loan-to-Value ratio as a number
+   */
+  const approveUsdcForLeveragedLPManager = async (
+    safeAddress: string,
+    safeSdk: any,
+    contracts: any,
+    ethAmount = '0.0001', // Default amount if not provided
+    ltv = 30 // Default LTV if not provided
+  ) => {
     try {
-      // Get position count
-      const positionCount = await leveragedLPManager.getPositionCount(safeAddress);
+      console.log('Checking USDC approval for LeveragedLPManager...');
 
-      if (positionCount.toString() === '0') {
-        return null;
+      // Get contract addresses
+      const addresses = getContractAddresses(chainId);
+      if (!addresses) {
+        throw new Error('Contract addresses not found for this network');
       }
 
-      // Get the latest position
-      const positionId = positionCount.sub(1).toString();
-      const position = await leveragedLPManager.positions(safeAddress, positionId);
+      // Calculate approximately how much USDC might be borrowed for this strategy
+      const ethPriceInUsdc = 2339 * 1e6; // Same price as in the contract
+      const ethAmountInEth = parseFloat(ethAmount); // Use the provided ethAmount
+      const estimatedUsdcBorrow = Math.ceil(ethAmountInEth * ethPriceInUsdc * (ltv / 100));
 
-      return {
-        positionId,
-        tokenId: position.tokenId.toString(),
-        ethAmount: utils.formatEther(position.ethAmount),
-        ltv: position.ltv.toString(),
-        createdAt: new Date(position.createdAt.toNumber() * 1000).toISOString(),
-        active: position.active,
-      };
+      console.log(`ETH amount: ${ethAmount} ETH`);
+      console.log(`LTV: ${ltv}%`);
+      console.log(`Estimated USDC borrow: ${estimatedUsdcBorrow} USDC units`);
+
+      const usdcAllowance = await contracts.usdc.allowance(
+        safeAddress,
+        addresses.leveragedLPManager
+      );
+      console.log(`Current USDC allowance: ${usdcAllowance.toString()} USDC units`);
+
+      // Only approve if current allowance is less than what we need
+      if (usdcAllowance.lt(ethers.BigNumber.from(estimatedUsdcBorrow))) {
+        // Create approval transaction data
+        const approveUsdcData = contracts.usdc.interface.encodeFunctionData('approve', [
+          addresses.leveragedLPManager,
+          ethers.constants.MaxUint256, // Approve maximum amount
+        ]);
+
+        const approveUsdcTxData = {
+          to: addresses.usdc,
+          data: approveUsdcData,
+          value: '0',
+        };
+
+        // Execute the approval transaction
+        await executeSafeTransaction(safeSdk, approveUsdcTxData, 'USDC approval');
+      } else {
+        console.log('USDC already approved for LeveragedLPManager.');
+      }
     } catch (error) {
-      console.error('Get position error:', error);
+      console.error(
+        `Error in USDC approval process: ${error instanceof Error ? error.message : String(error)}`
+      );
       throw error;
     }
   };
 
-  // Check if LP NFT is approved for fee hook
-  const isApprovedForFeeHook = async (tokenId: string) => {
-    if (!positionManager || !feeCollectHook) {
-      throw new Error('Contracts not initialized');
-    }
-
+  /**
+   * Set up Aave V3 debt token delegation (critical for borrowing)
+   * @param safeAddress - Address of the Safe
+   * @param safeSdk - Safe SDK instance
+   * @param provider - Ethers provider
+   * @param contracts - Object containing contract instances
+   */
+  const setupAaveDebtTokenDelegation = async (
+    safeAddress: string,
+    safeSdk: any,
+    provider: providers.Web3Provider | providers.JsonRpcProvider,
+    contracts: any
+  ) => {
     try {
-      // Check approval
-      const approved = await positionManager.getApproved(tokenId);
-      return approved === feeCollectHook.address;
-    } catch (error) {
-      console.error('Check fee hook approval error:', error);
-      return false;
-    }
-  };
-
-  // Check if LP NFT is approved for exit
-  const isApprovedForExit = async (tokenId: string) => {
-    if (!positionManager || !leveragedLPManager) {
-      throw new Error('Contracts not initialized');
-    }
-
-    try {
-      // Check approval
-      const approved = await positionManager.getApproved(tokenId);
-      return approved === leveragedLPManager.address;
-    } catch (error) {
-      console.error('Check exit approval error:', error);
-      return false;
-    }
-  };
-
-  // Get transaction history
-  const getTransactionHistory = async () => {
-    if (!safeAddress || !provider || !signer) {
-      throw new Error('Wallet not connected');
-    }
-
-    try {
-      // Create EthersAdapter instance
-      const ethAdapter = new EthersAdapter({
-        ethers,
-        signerOrProvider: signer || provider,
-      });
-
-      // Initialize Safe API Kit
-      const safeService = new SafeApiKit({
-        txServiceUrl: 'https://safe-transaction-base.safe.global',
-        chainId: BigInt(baseChain.id),
-      });
-
-      // Get transaction history
-      const history = await safeService.getMultisigTransactions(safeAddress);
-
-      // Get additional transaction details
-      const transactions = await Promise.all(
-        history.results.map(async tx => {
-          try {
-            // Get transaction receipt
-            const receipt = await provider.getTransactionReceipt(tx.transactionHash);
-
-            // Get block information
-            const block = await provider.getBlock(receipt.blockNumber);
-
-            return {
-              hash: tx.transactionHash,
-              to: tx.to,
-              value: utils.formatEther(tx.value),
-              timestamp: block.timestamp,
-              status: receipt.status === 1 ? 'Success' : 'Failed',
-              gasUsed: receipt.gasUsed.toString(),
-            };
-          } catch (error) {
-            return {
-              hash: tx.transactionHash,
-              to: tx.to,
-              value: utils.formatEther(tx.value),
-              timestamp: null,
-              status: 'Unknown',
-              gasUsed: '0',
-            };
-          }
-        })
+      console.log(
+        'Setting up Aave V3 debt token delegation - this is required for borrowing on behalf of another address'
       );
 
-      return transactions;
+      // Get contract addresses
+      const addresses = getContractAddresses(chainId);
+      if (!addresses) {
+        throw new Error('Contract addresses not found for this network');
+      }
+
+      // Get the USDC debt token address from Aave
+      console.log('Fetching USDC variable debt token address from Aave...');
+      const usdcTokenData = await contracts.aaveDataProvider.getReserveTokensAddresses(
+        addresses.usdc
+      );
+      const variableDebtTokenAddress = usdcTokenData.variableDebtTokenAddress;
+
+      console.log(`USDC Variable Debt Token address: ${variableDebtTokenAddress}`);
+
+      // Set up the debt token contract
+      const variableDebtToken = new Contract(
+        variableDebtTokenAddress,
+        ['function approveDelegation(address delegatee, uint256 amount) external'],
+        provider
+      );
+
+      // Skip checking for existing delegation and always set it up
+      console.log('Setting up debt delegation without checking current allowance');
+      console.log(`From Safe: ${safeAddress}`);
+      console.log(`To LeveragedLPManager: ${addresses.leveragedLPManager}`);
+
+      // Prepare delegation data - CRITICAL: The Safe must be the one calling approveDelegation
+      console.log(
+        `Setting up debt delegation from Safe (${safeAddress}) to LeveragedLPManager (${addresses.leveragedLPManager})`
+      );
+
+      const delegationData = variableDebtToken.interface.encodeFunctionData('approveDelegation', [
+        addresses.leveragedLPManager,
+        ethers.constants.MaxUint256, // Delegate maximum amount
+      ]);
+
+      const delegationTxData = {
+        to: variableDebtTokenAddress,
+        data: delegationData,
+        value: '0',
+      };
+
+      // Execute the debt token delegation transaction THROUGH the Safe
+      await executeSafeTransaction(safeSdk, delegationTxData, 'Aave debt token delegation');
     } catch (error) {
-      console.error('Get transaction history error:', error);
-      return [];
+      console.error(
+        `Error in debt token delegation: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw error;
+    }
+  };
+
+  /**
+   * Execute the startStrategy function on the LeveragedLPManager contract
+   * @param safeAddress - Address of the Safe
+   * @param safeSdk - Safe SDK instance
+   * @param contracts - Object containing contract instances
+   */
+  const executeStartStrategy = async (safeAddress: string, safeSdk: any, contracts: any) => {
+    try {
+      // Default values - can be parameterized
+      const ethAmount = utils.parseEther('0.001');
+      const ltv = 30;
+      const slippageBps = 50;
+
+      console.log('Creating startStrategy transaction with parameters:');
+      console.log(`- Safe address: ${safeAddress}`);
+      console.log(`- ETH amount: ${utils.formatEther(ethAmount)} ETH`);
+      console.log(`- LTV: ${ltv}%`);
+      console.log(`- Slippage: ${slippageBps / 100}%`);
+
+      // Create startStrategy transaction data
+      const startStrategyData = contracts.leveragedLPManager.interface.encodeFunctionData(
+        'startStrategy',
+        [safeAddress, ethAmount, ltv, slippageBps]
+      );
+
+      const startStrategyTxData = {
+        to: contracts.leveragedLPManager.address,
+        data: startStrategyData,
+        value: '0',
+      };
+
+      // Execute the startStrategy transaction
+      await executeSafeTransaction(safeSdk, startStrategyTxData, 'StartStrategy');
+    } catch (error) {
+      console.error(
+        `Error executing startStrategy: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw error;
+    }
+  };
+
+  /**
+   * Verify the strategy was created successfully
+   * @param safeAddress - Address of the Safe
+   * @param contracts - Object containing contract instances
+   */
+  const verifyStrategyPosition = async (safeAddress: string, contracts: any) => {
+    try {
+      console.log('Verifying strategy position was created successfully...');
+      const position = await contracts.leveragedLPManager.getUserPosition(safeAddress);
+
+      if (position.safe === safeAddress) {
+        console.log('Position successfully created!');
+        console.log(`LP Token ID: ${position.lpTokenId.toString()}`);
+        return true;
+      } else {
+        console.error('Position not found. Strategy initialization may have failed.');
+        return false;
+      }
+    } catch (error) {
+      console.error(
+        `Error verifying position: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return false;
+    }
+  };
+
+  // Complete the approval process for starting a strategy
+  // This includes approving WETH, USDC, and setting up Aave debt token delegation
+  const completeApprovalProcess = async (ethAmount: string, ltv: number): Promise<boolean> => {
+    if (!safeAddress || !signer || !safeSDK || !provider) {
+      throw new Error('Wallet not connected or Safe not initialized');
+    }
+
+    try {
+      const contracts = initializeContracts(provider);
+
+      const ethAmountWei = utils.parseEther(ethAmount);
+
+      // Step 1: Approve WETH for LeveragedLPManager with the provided ethAmount
+      await approveWethForLeveragedLPManager(safeAddress, safeSDK, contracts, ethAmountWei);
+
+      // Step 2: Approve USDC for LeveragedLPManager with the provided ethAmount and ltv
+      await approveUsdcForLeveragedLPManager(safeAddress, safeSDK, contracts, ethAmount, ltv);
+
+      // Step 3: Set up Aave debt token delegation (critical for borrowing)
+      await setupAaveDebtTokenDelegation(safeAddress, safeSDK, provider, contracts);
+
+      console.log('All approvals completed successfully!');
+      return true;
+    } catch (error) {
+      console.error(
+        `Error in approval process: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw error;
+    }
+  };
+
+  // Start a leveraged LP strategy
+  const startStrategy = async (ethAmount: string, ltv: number): Promise<string> => {
+    if (!safeAddress || !signer || !safeSDK || !provider) {
+      throw new Error('Wallet not connected, Safe not initialized, or provider not available');
+    }
+
+    try {
+      // Initialize contracts
+      const contracts = initializeContracts(provider);
+
+      // Execute the complete flow as in TestEndToEnd.js
+      console.log('Starting the complete strategy flow...');
+
+      // Step 1: Convert ETH to WETH
+      await convertEthToWeth(ethAmount);
+
+      const ethAmountWei = utils.parseEther(ethAmount);
+
+      // Step 2: Approve WETH for LeveragedLPManager
+      await approveWethForLeveragedLPManager(safeAddress, safeSDK, contracts, ethAmountWei);
+
+      // Step 3: Approve USDC for LeveragedLPManager
+      await approveUsdcForLeveragedLPManager(safeAddress, safeSDK, contracts, ethAmount);
+
+      // Step 4: Set up Aave debt token delegation
+      await setupAaveDebtTokenDelegation(safeAddress, safeSDK, provider, contracts);
+
+      // Step 5: Execute the startStrategy function
+      await executeStartStrategy(safeAddress, safeSDK, contracts);
+
+      // Step 6: Verify the position was created
+      const success = await verifyStrategyPosition(safeAddress, contracts);
+
+      if (!success) {
+        throw new Error('Strategy position verification failed');
+      }
+
+      // Refresh balance
+      await fetchBalance();
+
+      return 'Strategy started successfully!';
+    } catch (error) {
+      console.error(
+        `Error starting strategy: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw error;
+    }
+  };
+
+  // Exit a leveraged LP strategy
+  const exitStrategy = async (positionId: string): Promise<string> => {
+    if (!safeAddress || !signer || !safeSDK || !leveragedLPManager) {
+      throw new Error('Wallet not connected, Safe not initialized, or contracts not loaded');
+    }
+
+    try {
+      console.log(`Exiting strategy for position ID: ${positionId}`);
+
+      // Create exitStrategy transaction data
+      const exitStrategyData = leveragedLPManager.interface.encodeFunctionData('exitStrategy', [
+        safeAddress,
+        positionId,
+      ]);
+
+      const exitStrategyTxData = {
+        to: leveragedLPManager.address,
+        data: exitStrategyData,
+        value: '0',
+      };
+
+      // Execute the exitStrategy transaction
+      console.log('Executing exitStrategy transaction...');
+      const exitStrategyTx = await safeSDK.createTransaction({
+        safeTransactionData: exitStrategyTxData,
+      });
+
+      const exitStrategyTxResponse = await safeSDK.executeTransaction(exitStrategyTx);
+
+      // Wait for transaction to be mined
+      let txHash = '';
+      if (exitStrategyTxResponse.transactionResponse) {
+        await exitStrategyTxResponse.transactionResponse.wait();
+        txHash = exitStrategyTxResponse.transactionResponse.hash;
+      }
+
+      console.log(`Strategy exited successfully! Tx hash: ${txHash}`);
+
+      // Refresh balance
+      await fetchBalance();
+
+      return txHash;
+    } catch (error) {
+      console.error('Error exiting strategy:', error);
+      throw error;
     }
   };
 
@@ -753,18 +957,13 @@ const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         balance,
         connect,
         createSafeAccount,
+        depositETH,
         disconnect,
         fetchBalance,
-        sendTransaction,
-        approveERC20,
-        approveERC721,
-        depositETH,
-        getTransactionHistory,
         startStrategy,
         exitStrategy,
-        getUserPosition,
-        isApprovedForFeeHook,
-        isApprovedForExit,
+        convertEthToWeth,
+        completeApprovalProcess,
       }}
     >
       {children}
