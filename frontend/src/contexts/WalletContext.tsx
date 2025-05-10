@@ -37,10 +37,8 @@ interface WalletContextProps {
   chainId: number;
   safeAddress: string;
 
-  // Balance
   balance: string;
 
-  // Functions
   connect: () => Promise<boolean>;
   createSafeAccount: () => Promise<string | null>;
   disconnect: () => void;

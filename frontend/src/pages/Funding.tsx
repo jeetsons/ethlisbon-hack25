@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '../contexts/WalletContext';
-import { formatEthBalance } from '../utils/address';
-import { ethers } from 'ethers';
 
 const Funding: React.FC = () => {
   const {
     isConnected,
-    gnosisSafeAddress,
+    safeAddress,
     depositETH,
     balance: safeBalance,
     fetchBalance,
@@ -20,15 +18,15 @@ const Funding: React.FC = () => {
 
   // Fetch balance when component mounts and when connected state changes
   useEffect(() => {
-    if (isConnected && gnosisSafeAddress) {
+    if (isConnected && safeAddress) {
       fetchBalance();
     }
-  }, [isConnected, gnosisSafeAddress, fetchBalance]);
+  }, [isConnected, safeAddress, fetchBalance]);
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!isConnected || !gnosisSafeAddress) {
+    if (!isConnected || !safeAddress) {
       setError('Please connect your Gnosis Pay wallet first');
       return;
     }
@@ -43,7 +41,6 @@ const Funding: React.FC = () => {
       setError(null);
       setTxHash(null);
 
-      // Use the depositETH function from WalletContext
       const hash = await depositETH(amount);
 
       setTxHash(hash);
@@ -68,8 +65,8 @@ const Funding: React.FC = () => {
   if (!isConnected) {
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200 mb-6">
-          <p className="text-yellow-700">
+        <div className="bg-white p-4 rounded-md border border-gray-200 mb-6">
+          <p className="text-black">
             Please connect your Gnosis Pay wallet to fund it with ETH.
           </p>
         </div>
@@ -79,26 +76,26 @@ const Funding: React.FC = () => {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Fund Your Gnosis Pay Wallet</h1>
+      <h1 className="text-2xl font-bold mb-6 text-black">Fund Your Gnosis Pay Wallet</h1>
 
       <div className="bg-white p-6 rounded-lg shadow mb-6">
-        <h2 className="text-lg font-semibold mb-4">Current Balance</h2>
-        <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+        <h2 className="text-lg font-semibold mb-4 text-black">Current Balance</h2>
+        <div className="bg-white p-4 rounded-md border border-gray-200">
           <div className="flex justify-between items-center">
-            <span className="text-gray-600">ETH Balance:</span>
-            <span className="font-mono font-medium text-lg">{safeBalance} ETH</span>
+            <span className="text-black">ETH Balance:</span>
+            <span className="font-mono font-medium text-lg text-black">{safeBalance} ETH</span>
           </div>
         </div>
       </div>
 
       <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-lg font-semibold mb-4">Deposit ETH</h2>
+        <h2 className="text-lg font-semibold mb-4 text-black">Deposit ETH</h2>
 
         {depositSuccess && (
-          <div className="bg-green-50 p-4 rounded-md border border-green-200 mb-4">
-            <p className="text-green-700">ETH deposited successfully!</p>
+          <div className="bg-white p-4 rounded-md border border-gray-200 mb-4">
+            <p className="text-black">ETH deposited successfully!</p>
             {txHash && (
-              <p className="text-sm mt-2">
+              <p className="text-sm mt-2 text-black">
                 Transaction hash:{' '}
                 <a
                   href={`https://basescan.org/tx/${txHash}`}
@@ -114,14 +111,14 @@ const Funding: React.FC = () => {
         )}
 
         {error && (
-          <div className="bg-red-50 p-4 rounded-md border border-red-200 mb-4">
-            <p className="text-red-700">{error}</p>
+          <div className="bg-white p-4 rounded-md border border-gray-200 mb-4">
+            <p className="text-black">{error}</p>
           </div>
         )}
 
         <form onSubmit={handleDeposit}>
           <div className="mb-4">
-            <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="amount" className="block text-sm font-medium text-black mb-1">
               Amount (ETH)
             </label>
             <input
@@ -132,7 +129,7 @@ const Funding: React.FC = () => {
               value={amount}
               onChange={e => setAmount(e.target.value)}
               placeholder="0.0"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -146,15 +143,15 @@ const Funding: React.FC = () => {
           </button>
         </form>
 
-        <div className="mt-6 bg-blue-50 p-4 rounded-md">
-          <h3 className="font-medium text-blue-800 mb-2">How to fund your wallet:</h3>
-          <ol className="list-decimal pl-5 text-blue-700 space-y-1">
+        <div className="mt-6 bg-white p-4 rounded-md border border-gray-200">
+          <h3 className="font-medium text-black mb-2">How to fund your wallet:</h3>
+          <ol className="list-decimal pl-5 text-black space-y-1">
             <li>Enter the amount of ETH you want to deposit</li>
             <li>Click "Deposit ETH" and confirm the transaction in your wallet</li>
             <li>Wait for the transaction to be confirmed on the blockchain</li>
             <li>Your balance will update automatically once the deposit is complete</li>
           </ol>
-          <p className="mt-3 text-sm text-blue-600">
+          <p className="mt-3 text-sm text-black">
             Note: You'll need ETH in your connected wallet to complete this transaction.
           </p>
         </div>
