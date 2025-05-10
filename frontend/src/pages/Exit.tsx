@@ -16,7 +16,7 @@ const Exit: React.FC = () => {
   const [isExiting, setIsExiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  
+
   // Mock strategy status - in a real app, you would fetch this from the blockchain
   const [strategyStatus, setStrategyStatus] = useState<StrategyStatus>({
     isActive: false,
@@ -31,14 +31,14 @@ const Exit: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       // In a real implementation, you would fetch the strategy status from the blockchain
       // Example:
       // const status = await leveragedLPManagerContract.userPositions(gnosisSafeAddress);
-      
+
       // For demo purposes, we'll simulate a strategy status
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
+
       // Mock data
       setStrategyStatus({
         isActive: true,
@@ -66,7 +66,7 @@ const Exit: React.FC = () => {
     try {
       setIsExiting(true);
       setError(null);
-      
+
       // In a real implementation, you would use the Gnosis Pay SDK to approve the manager
       // Example:
       // await gnosisPay.approveERC721(
@@ -74,13 +74,13 @@ const Exit: React.FC = () => {
       //   leveragedLPManagerAddress,
       //   strategyStatus.lpTokenId
       // );
-      
+
       // For demo purposes, we'll simulate a successful approval
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       setStrategyStatus(prev => ({ ...prev, managerApproved: true }));
       setSuccess('LP Manager approved successfully!');
-      
+
       // Reset success message after 3 seconds
       setTimeout(() => {
         setSuccess(null);
@@ -97,13 +97,13 @@ const Exit: React.FC = () => {
     try {
       setIsExiting(true);
       setError(null);
-      
+
       if (!strategyStatus.managerApproved) {
         setError('Please approve the LP Manager before exiting the strategy');
         setIsExiting(false);
         return;
       }
-      
+
       // In a real implementation, you would use the Gnosis Pay SDK to exit the strategy
       // Example:
       // await gnosisPay.executeTransaction(
@@ -111,13 +111,15 @@ const Exit: React.FC = () => {
       //   'exitStrategy',
       //   [gnosisSafeAddress]
       // );
-      
+
       // For demo purposes, we'll simulate a successful exit
       await new Promise(resolve => setTimeout(resolve, 3000));
-      
+
       setStrategyStatus(prev => ({ ...prev, isActive: false }));
-      setSuccess('Strategy exited successfully! Assets have been returned to your Gnosis Pay wallet.');
-      
+      setSuccess(
+        'Strategy exited successfully! Assets have been returned to your Gnosis Pay wallet.'
+      );
+
       // Reset success message after 5 seconds
       setTimeout(() => {
         setSuccess(null);
@@ -145,19 +147,19 @@ const Exit: React.FC = () => {
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Exit Strategy</h1>
-      
+
       {error && (
         <div className="bg-red-50 p-4 rounded-md border border-red-200 mb-6">
           <p className="text-red-700">{error}</p>
         </div>
       )}
-      
+
       {success && (
         <div className="bg-green-50 p-4 rounded-md border border-green-200 mb-6">
           <p className="text-green-700">{success}</p>
         </div>
       )}
-      
+
       {isLoading ? (
         <div className="bg-white p-8 rounded-lg shadow text-center">
           <p className="text-gray-600">Loading strategy data...</p>
@@ -172,18 +174,16 @@ const Exit: React.FC = () => {
       ) : (
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-4">Exit Your Leveraged LP Strategy</h2>
-          
+
           <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200 mb-6">
-            <p className="text-yellow-700 font-medium">
-              Important: Exiting the strategy will:
-            </p>
+            <p className="text-yellow-700 font-medium">Important: Exiting the strategy will:</p>
             <ol className="list-decimal pl-5 mt-2 space-y-1 text-yellow-700">
               <li>Withdraw your LP position from Uniswap V4</li>
               <li>Repay your USDC debt on Aave</li>
               <li>Return your ETH collateral to your Gnosis Pay wallet</li>
             </ol>
           </div>
-          
+
           <div className="mb-6">
             <h3 className="text-md font-medium mb-3">Strategy Summary</h3>
             <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
@@ -194,7 +194,9 @@ const Exit: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-gray-500 text-sm">USDC Borrowed:</span>
-                  <p className="font-medium">{formatUsdcBalance(strategyStatus.usdcBorrowed)} USDC</p>
+                  <p className="font-medium">
+                    {formatUsdcBalance(strategyStatus.usdcBorrowed)} USDC
+                  </p>
                 </div>
                 <div>
                   <span className="text-gray-500 text-sm">LP Token ID:</span>
@@ -209,13 +211,14 @@ const Exit: React.FC = () => {
               </div>
             </div>
           </div>
-          
+
           {!strategyStatus.managerApproved && (
             <div className="mb-6">
               <h3 className="text-md font-medium mb-3">Required Approval</h3>
               <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
                 <p className="mb-3 text-gray-700">
-                  Before exiting, you need to approve the LeveragedLPManager contract to use your LP NFT.
+                  Before exiting, you need to approve the LeveragedLPManager contract to use your LP
+                  NFT.
                 </p>
                 <button
                   onClick={handleApproveManager}
@@ -227,7 +230,7 @@ const Exit: React.FC = () => {
               </div>
             </div>
           )}
-          
+
           <button
             onClick={handleExitStrategy}
             disabled={isExiting || !strategyStatus.managerApproved}
@@ -235,7 +238,7 @@ const Exit: React.FC = () => {
           >
             {isExiting ? 'Processing Exit...' : 'Exit Strategy'}
           </button>
-          
+
           <p className="mt-4 text-sm text-gray-500 text-center">
             Make sure you have approved the LP Manager before exiting the strategy.
           </p>

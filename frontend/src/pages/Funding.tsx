@@ -4,14 +4,14 @@ import { formatEthBalance } from '../utils/address';
 import { ethers } from 'ethers';
 
 const Funding: React.FC = () => {
-  const { 
-    isConnected, 
-    gnosisSafeAddress, 
-    depositETH, 
+  const {
+    isConnected,
+    gnosisSafeAddress,
+    depositETH,
     balance: safeBalance,
-    fetchBalance
+    fetchBalance,
   } = useWallet();
-  
+
   const [amount, setAmount] = useState('');
   const [isDepositing, setIsDepositing] = useState(false);
   const [depositSuccess, setDepositSuccess] = useState(false);
@@ -27,7 +27,7 @@ const Funding: React.FC = () => {
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!isConnected || !gnosisSafeAddress) {
       setError('Please connect your Gnosis Pay wallet first');
       return;
@@ -42,17 +42,17 @@ const Funding: React.FC = () => {
       setIsDepositing(true);
       setError(null);
       setTxHash(null);
-      
+
       // Use the depositETH function from WalletContext
       const hash = await depositETH(amount);
-      
+
       setTxHash(hash);
       setDepositSuccess(true);
       setAmount('');
-      
+
       // Refresh balance
       await fetchBalance();
-      
+
       // Reset success message after 5 seconds
       setTimeout(() => {
         setDepositSuccess(false);
@@ -80,7 +80,7 @@ const Funding: React.FC = () => {
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Fund Your Gnosis Pay Wallet</h1>
-      
+
       <div className="bg-white p-6 rounded-lg shadow mb-6">
         <h2 className="text-lg font-semibold mb-4">Current Balance</h2>
         <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
@@ -90,20 +90,19 @@ const Funding: React.FC = () => {
           </div>
         </div>
       </div>
-      
+
       <div className="bg-white p-6 rounded-lg shadow">
         <h2 className="text-lg font-semibold mb-4">Deposit ETH</h2>
-        
+
         {depositSuccess && (
           <div className="bg-green-50 p-4 rounded-md border border-green-200 mb-4">
-            <p className="text-green-700">
-              ETH deposited successfully!
-            </p>
+            <p className="text-green-700">ETH deposited successfully!</p>
             {txHash && (
               <p className="text-sm mt-2">
-                Transaction hash: <a 
-                  href={`https://basescan.org/tx/${txHash}`} 
-                  target="_blank" 
+                Transaction hash:{' '}
+                <a
+                  href={`https://basescan.org/tx/${txHash}`}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-600 hover:underline font-mono break-all"
                 >
@@ -113,13 +112,13 @@ const Funding: React.FC = () => {
             )}
           </div>
         )}
-        
+
         {error && (
           <div className="bg-red-50 p-4 rounded-md border border-red-200 mb-4">
             <p className="text-red-700">{error}</p>
           </div>
         )}
-        
+
         <form onSubmit={handleDeposit}>
           <div className="mb-4">
             <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">
@@ -131,13 +130,13 @@ const Funding: React.FC = () => {
               min="0.001"
               step="0.001"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={e => setAmount(e.target.value)}
               placeholder="0.0"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
-          
+
           <button
             type="submit"
             disabled={isDepositing || !amount}
@@ -146,7 +145,7 @@ const Funding: React.FC = () => {
             {isDepositing ? 'Processing...' : 'Deposit ETH'}
           </button>
         </form>
-        
+
         <div className="mt-6 bg-blue-50 p-4 rounded-md">
           <h3 className="font-medium text-blue-800 mb-2">How to fund your wallet:</h3>
           <ol className="list-decimal pl-5 text-blue-700 space-y-1">

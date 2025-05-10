@@ -1,15 +1,19 @@
-import React, {createContext, useContext, useState, useEffect} from 'react';
-import type {Address} from 'viem';
-import type {ReactNode} from 'react';
-import {baseChain} from '../constants/chains';
-import {ethers, providers, Signer, Contract, utils} from 'ethers';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { Address } from 'viem';
+import type { ReactNode } from 'react';
+import { baseChain } from '../constants/chains';
+import { ethers, providers, Signer, Contract, utils } from 'ethers';
 
 // Import Safe SDK for production-ready implementation
 import Safe from '@safe-global/protocol-kit';
-import type {PredictedSafeProps, SafeAccountConfig, SafeDeploymentConfig} from '@safe-global/protocol-kit';
+import type {
+  PredictedSafeProps,
+  SafeAccountConfig,
+  SafeDeploymentConfig,
+} from '@safe-global/protocol-kit';
 import EthersAdapter from '@safe-global/safe-ethers-lib';
 import SafeApiKit from '@safe-global/api-kit';
-import {getContractAddresses} from '../constants/contractAddresses';
+import { getContractAddresses } from '../constants/contractAddresses';
 
 // Import ABIs
 import LeveragedLPManagerABI from '../abis/LeveragedLPManager.json';
@@ -63,10 +67,8 @@ const WalletContext = createContext<WalletContextProps>({
   balance: '0',
   connect: async () => false,
   createSafeAccount: async () => null,
-  disconnect: () => {
-  },
-  fetchBalance: async () => {
-  },
+  disconnect: () => {},
+  fetchBalance: async () => {},
   sendTransaction: async () => '',
   approveERC20: async () => '',
   approveERC721: async () => '',
@@ -85,7 +87,7 @@ interface WalletProviderProps {
 }
 
 // Create WalletProvider component
-const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
+const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   // Connection state
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [account, setAccount] = useState<string>('');
@@ -116,18 +118,10 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
       const addresses = getContractAddresses(chainId);
 
       // Initialize contract instances
-      const lpManager = new Contract(
-        addresses.leveragedLPManager,
-        LeveragedLPManagerABI,
-        signer
-      );
+      const lpManager = new Contract(addresses.leveragedLPManager, LeveragedLPManagerABI, signer);
       setLeveragedLPManager(lpManager);
 
-      const feeHook = new Contract(
-        addresses.feeCollectHook,
-        FeeCollectHookABI,
-        signer
-      );
+      const feeHook = new Contract(addresses.feeCollectHook, FeeCollectHookABI, signer);
       setFeeCollectHook(feeHook);
 
       const posManager = new Contract(
@@ -139,7 +133,6 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
     }
   }, [provider, signer, chainId]);
 
-
   // Connect wallet
   const connect = async (): Promise<boolean> => {
     setIsConnecting(true);
@@ -148,11 +141,13 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
     try {
       // Check if ethereum is available
       if (!window.ethereum) {
-        throw new Error('No Ethereum wallet detected. Please install MetaMask or another compatible wallet.');
+        throw new Error(
+          'No Ethereum wallet detected. Please install MetaMask or another compatible wallet.'
+        );
       }
 
       // Request accounts
-      const accounts = await window.ethereum.request({method: 'eth_requestAccounts'});
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       const userAccount = accounts[0];
       setAccount(userAccount);
 
@@ -174,7 +169,7 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
           // Try to switch to Base
           await window.ethereum.request({
             method: 'wallet_switchEthereumChain',
-            params: [{chainId: `0x${baseChain.id.toString(16)}`}],
+            params: [{ chainId: `0x${baseChain.id.toString(16)}` }],
           });
 
           // Update chain ID after switch
@@ -186,17 +181,19 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
             try {
               await window.ethereum.request({
                 method: 'wallet_addEthereumChain',
-                params: [{
-                  chainId: `0x${baseChain.id.toString(16)}`,
-                  chainName: 'Base',
-                  nativeCurrency: {
-                    name: 'ETH',
-                    symbol: 'ETH',
-                    decimals: 18
+                params: [
+                  {
+                    chainId: `0x${baseChain.id.toString(16)}`,
+                    chainName: 'Base',
+                    nativeCurrency: {
+                      name: 'ETH',
+                      symbol: 'ETH',
+                      decimals: 18,
+                    },
+                    rpcUrls: ['https://mainnet.base.org'],
+                    blockExplorerUrls: ['https://basescan.org'],
                   },
-                  rpcUrls: ['https://mainnet.base.org'],
-                  blockExplorerUrls: ['https://basescan.org']
-                }],
+                ],
               });
 
               // Update chain ID after adding
@@ -231,7 +228,7 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
           const protocolKit = await Safe.init({
             provider: rpcUrl,
             signer: signerAddress,
-            safeAddress: savedSafeAddress
+            safeAddress: savedSafeAddress,
           });
 
           // Set the Safe SDK instance
@@ -287,7 +284,7 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
       // Create Safe account config
       const safeAccountConfig: SafeAccountConfig = {
         owners: [signerAddress],
-        threshold: 1
+        threshold: 1,
       };
 
       // Create Safe deployment config
@@ -296,14 +293,14 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
       // Create predicted Safe props
       const predictedSafe: PredictedSafeProps = {
         safeAccountConfig,
-        safeDeploymentConfig
+        safeDeploymentConfig,
       };
 
       // Initialize Safe SDK
       const protocolKit = await Safe.init({
         provider: rpcUrl,
         signer: signerAddress,
-        predictedSafe
+        predictedSafe,
       });
 
       // Get the predicted Safe address
@@ -318,7 +315,7 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
       const tx = await signer.sendTransaction({
         to: deploymentTransaction.to,
         data: deploymentTransaction.data,
-        value: ethers.BigNumber.from(deploymentTransaction.value)
+        value: ethers.BigNumber.from(deploymentTransaction.value),
       });
 
       // Wait for the transaction to be mined
@@ -327,7 +324,7 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
 
       // Connect to the deployed Safe
       const deployedSafeProtocolKit = await protocolKit.connect({
-        safeAddress: predictedSafeAddress
+        safeAddress: predictedSafeAddress,
       });
 
       // Save the Safe address to localStorage
@@ -419,11 +416,11 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
       const safeTransactionData = {
         to,
         value: utils.parseEther(value).toString(),
-        data
+        data,
       };
 
       // Create and execute transaction
-      const safeTransaction = await safeSDK.createTransaction({safeTransactionData});
+      const safeTransaction = await safeSDK.createTransaction({ safeTransactionData });
       const txResponse = await safeSDK.executeTransaction(safeTransaction);
       const receipt = await txResponse.transactionResponse?.wait();
 
@@ -438,7 +435,11 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
   };
 
   // Approve ERC20 token for spending
-  const approveERC20 = async (tokenAddress: string, spender: string, amount: string): Promise<string> => {
+  const approveERC20 = async (
+    tokenAddress: string,
+    spender: string,
+    amount: string
+  ): Promise<string> => {
     try {
       if (!provider || !signer || !safeAddress || !safeSDK) {
         throw new Error('No provider, signer, or Safe address available');
@@ -451,19 +452,19 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
       const decimals = await tokenContract.decimals();
 
       // Create approval transaction data
-      const approvalData = tokenContract.interface.encodeFunctionData(
-        'approve',
-        [spender, utils.parseUnits(amount, decimals)]
-      );
+      const approvalData = tokenContract.interface.encodeFunctionData('approve', [
+        spender,
+        utils.parseUnits(amount, decimals),
+      ]);
 
       // Create and execute transaction
       const safeTransactionData = {
         to: tokenAddress,
         value: '0',
-        data: approvalData
+        data: approvalData,
       };
 
-      const safeTransaction = await safeSDK.createTransaction({safeTransactionData});
+      const safeTransaction = await safeSDK.createTransaction({ safeTransactionData });
       const txResponse = await safeSDK.executeTransaction(safeTransaction);
       const receipt = await txResponse.transactionResponse?.wait();
 
@@ -475,18 +476,18 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
   };
 
   // Approve ERC721 token (NFT)
-  const approveERC721 = async (tokenAddress: string, spender: string, tokenId: string): Promise<string> => {
+  const approveERC721 = async (
+    tokenAddress: string,
+    spender: string,
+    tokenId: string
+  ): Promise<string> => {
     if (!safeAddress || !signer) {
       throw new Error('Wallet not connected');
     }
 
     try {
       // Create ERC721 contract instance
-      const nftContract = new Contract(
-        tokenAddress,
-        ERC721ABI,
-        signer
-      );
+      const nftContract = new Contract(tokenAddress, ERC721ABI, signer);
 
       // In a simplified approach for the hackathon, we'll call approve directly
       // In a production environment with Safe, we would use the Safe SDK
@@ -515,7 +516,7 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
       // Send ETH directly to Safe address
       const tx = await signer.sendTransaction({
         to: safeAddress,
-        value: utils.parseEther(amount)
+        value: utils.parseEther(amount),
       });
 
       const receipt = await tx.wait();
@@ -547,19 +548,19 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
       }
 
       // Create transaction data for startStrategy
-      const txData = leveragedLPManager.interface.encodeFunctionData(
-        'startStrategy',
-        [utils.parseEther(ethAmount), ltv]
-      );
+      const txData = leveragedLPManager.interface.encodeFunctionData('startStrategy', [
+        utils.parseEther(ethAmount),
+        ltv,
+      ]);
 
       // Create and execute transaction
       const safeTransactionData = {
         to: leveragedLPManager.address,
         value: '0',
-        data: txData
+        data: txData,
       };
 
-      const safeTransaction = await safeSDK.createTransaction({safeTransactionData});
+      const safeTransaction = await safeSDK.createTransaction({ safeTransactionData });
       const txResponse = await safeSDK.executeTransaction(safeTransaction);
       const receipt = await txResponse.transactionResponse?.wait();
 
@@ -588,19 +589,16 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
       }
 
       // Create transaction data for exitStrategy
-      const txData = leveragedLPManager.interface.encodeFunctionData(
-        'exitStrategy',
-        [positionId]
-      );
+      const txData = leveragedLPManager.interface.encodeFunctionData('exitStrategy', [positionId]);
 
       // Create and execute transaction
       const safeTransactionData = {
         to: leveragedLPManager.address,
         value: '0',
-        data: txData
+        data: txData,
       };
 
-      const safeTransaction = await safeSDK.createTransaction({safeTransactionData});
+      const safeTransaction = await safeSDK.createTransaction({ safeTransactionData });
       const txResponse = await safeSDK.executeTransaction(safeTransaction);
       const receipt = await txResponse.transactionResponse?.wait();
 
@@ -638,7 +636,7 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
         ethAmount: utils.formatEther(position.ethAmount),
         ltv: position.ltv.toString(),
         createdAt: new Date(position.createdAt.toNumber() * 1000).toISOString(),
-        active: position.active
+        active: position.active,
       };
     } catch (error) {
       console.error('Get position error:', error);
@@ -688,13 +686,13 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
       // Create EthersAdapter instance
       const ethAdapter = new EthersAdapter({
         ethers,
-        signerOrProvider: signer || provider
+        signerOrProvider: signer || provider,
       });
 
       // Initialize Safe API Kit
       const safeService = new SafeApiKit({
         txServiceUrl: 'https://safe-transaction-base.safe.global',
-        chainId: BigInt(baseChain.id)
+        chainId: BigInt(baseChain.id),
       });
 
       // Get transaction history
@@ -702,7 +700,7 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
 
       // Get additional transaction details
       const transactions = await Promise.all(
-        history.results.map(async (tx) => {
+        history.results.map(async tx => {
           try {
             // Get transaction receipt
             const receipt = await provider.getTransactionReceipt(tx.transactionHash);
@@ -716,7 +714,7 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
               value: utils.formatEther(tx.value),
               timestamp: block.timestamp,
               status: receipt.status === 1 ? 'Success' : 'Failed',
-              gasUsed: receipt.gasUsed.toString()
+              gasUsed: receipt.gasUsed.toString(),
             };
           } catch (error) {
             return {
@@ -725,7 +723,7 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
               value: utils.formatEther(tx.value),
               timestamp: null,
               status: 'Unknown',
-              gasUsed: '0'
+              gasUsed: '0',
             };
           }
         })
@@ -747,28 +745,30 @@ const WalletProvider: React.FC<WalletProviderProps> = ({children}) => {
   }, []);
 
   return (
-    <WalletContext.Provider value={{
-      isConnected,
-      isLoading,
-      account,
-      chainId,
-      safeAddress,
-      balance,
-      connect,
-      createSafeAccount,
-      disconnect,
-      fetchBalance,
-      sendTransaction,
-      approveERC20,
-      approveERC721,
-      depositETH,
-      getTransactionHistory,
-      startStrategy,
-      exitStrategy,
-      getUserPosition,
-      isApprovedForFeeHook,
-      isApprovedForExit,
-    }}>
+    <WalletContext.Provider
+      value={{
+        isConnected,
+        isLoading,
+        account,
+        chainId,
+        safeAddress,
+        balance,
+        connect,
+        createSafeAccount,
+        disconnect,
+        fetchBalance,
+        sendTransaction,
+        approveERC20,
+        approveERC721,
+        depositETH,
+        getTransactionHistory,
+        startStrategy,
+        exitStrategy,
+        getUserPosition,
+        isApprovedForFeeHook,
+        isApprovedForExit,
+      }}
+    >
       {children}
     </WalletContext.Provider>
   );

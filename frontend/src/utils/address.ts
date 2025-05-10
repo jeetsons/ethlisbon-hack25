@@ -8,7 +8,7 @@ import type { Address } from 'viem';
  */
 export function shortenAddress(address: Address | string | null | undefined, chars = 4): string {
   if (!address) return '';
-  
+
   const parsed = address.toString();
   return `${parsed.substring(0, chars + 2)}...${parsed.substring(parsed.length - chars)}`;
 }
@@ -21,7 +21,7 @@ export function shortenAddress(address: Address | string | null | undefined, cha
  */
 export function formatEthBalance(balance: bigint | null | undefined, decimals = 4): string {
   if (balance === null || balance === undefined) return '0';
-  
+
   const ethValue = Number(balance) / 1e18;
   return ethValue.toFixed(decimals);
 }
@@ -34,7 +34,7 @@ export function formatEthBalance(balance: bigint | null | undefined, decimals = 
  */
 export function formatUsdcBalance(balance: bigint | null | undefined, decimals = 2): string {
   if (balance === null || balance === undefined) return '0';
-  
+
   const usdcValue = Number(balance) / 1e6; // USDC has 6 decimals
   return usdcValue.toFixed(decimals);
 }
