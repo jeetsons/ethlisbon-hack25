@@ -71,7 +71,7 @@ const ABIs = {
 const config = {
   // Contract addresses
   addresses: {
-    leveragedLPManager: "0x8442aE593Dee7D8644BA23BA67a626BF64f6F2e6", // LeveragedLPManager on Base
+    leveragedLPManager: "0x6A96E1Bd99aC592dAf59d514fb714a4ceEc5c89E", // LeveragedLPManager on Base
     weth: "0x4200000000000000000000000000000000000006", // WETH on Base
     usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
     safe: "0x37adcff072f44bec0413029e7bfd785ca0467143", // Our existing Safe address

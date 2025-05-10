@@ -2,8 +2,8 @@ No files changed, compilation skipped
 Script ran successfully.
 
 == Logs ==
-  LeveragedLPManager deployed at: 0x8442aE593Dee7D8644BA23BA67a626BF64f6F2e6
-  FeeCollectHook deployed at: 0x9d64C9fE002913b741C0c72C2e3146EAE50924A8
+  LeveragedLPManager deployed at: 0x6A96E1Bd99aC592dAf59d514fb714a4ceEc5c89E
+  FeeCollectHook deployed at: 0x43aaFfcf5cC1C9D1dDd01DdF490448dA912787B7
 
 ## Setting up 1 EVM.
 
@@ -11,11 +11,11 @@ Script ran successfully.
 
 Chain 8453
 
-Estimated gas price: 0.002848308 gwei
+Estimated gas price: 0.003352813 gwei
 
-Estimated total gas used for script: 3837879
+Estimated total gas used for script: 4041621
 
-Estimated amount required: 0.000010931461458732 ETH
+Estimated amount required: 0.000013550799429873 ETH
 
 ==========================
 

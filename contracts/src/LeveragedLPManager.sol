@@ -228,61 +228,61 @@ contract LeveragedLPManager is IERC721Receiver, ReentrancyGuard, Ownable {
 
         // Get ETH price in USDC terms using Uniswap V4 Quoter
         // Set up the parameters for Uniswap V4 pool key
-//        Currency currency0;
-//        Currency currency1;
-//
-//        // Determine currency0 and currency1 based on token addresses
-//        // On Base: WETH (0x4200...) < USDC (0x8335...), so WETH is token0 and USDC is token1
-//        bool usdcIsToken0 = uint160(usdc) < uint160(weth);
-//
-//        if (usdcIsToken0) {
-//            currency0 = Currency.wrap(usdc);
-//            currency1 = Currency.wrap(weth);
-//        } else {
-//            currency0 = Currency.wrap(weth);
-//            currency1 = Currency.wrap(usdc);
-//        }
-//
-//        // Determine if we're swapping from token0 to token1 or vice versa
-//        // For ETH->USDC price quote, we need to know the direction based on token ordering
-//        bool zeroForOne = usdcIsToken0;
-//
-//        // Create the PoolKey for price quotation
-//        PoolKey memory poolKey = PoolKey({
-//            currency0: currency0,
-//            currency1: currency1,
-//            fee: poolFee,
-//            tickSpacing: TICK_SPACING,
-//            hooks: address(0) // No hooks for basic pools
-//        });
-//
-//        // Create parameters for the quoter to get ETH/USDC price
-//        // We'll quote how much USDC we get for 1 ETH
-//        // On Base: WETH is token0, USDC is token1, so ETH->USDC is token0->token1 (zeroForOne = true)
-//        bool ethToUsdcDirection;
-//
-//        if (usdcIsToken0) {
-//            // If USDC is token0, ETH->USDC is token1->token0, so zeroForOne = false
-//            ethToUsdcDirection = false;
-//        } else {
-//            // If WETH is token0, ETH->USDC is token0->token1, so zeroForOne = true
-//            ethToUsdcDirection = true;
-//        }
-//
-//        QuoteExactSingleParams memory quoteParams = QuoteExactSingleParams({
-//            poolKey: poolKey,
-//            zeroForOne: ethToUsdcDirection,
-//            exactAmount: uint128(1e18), // 1 ETH
-//            hookData: ""
-//        });
-//
-//        // Query the Uniswap V4 Quoter for current ETH price in USDC
-//        (uint256 ethPriceInUsdc,) = IV4Quoter(UNISWAP_V4_QUOTER).quoteExactInputSingle(quoteParams);
-//
-//        // Calculate max borrowable USDC based on ETH value and LTV
-//        // ethAmount is in wei (18 decimals), ethPriceInUsdc is in USDC's native 6 decimals
-//        // This represents how many USDC units (with 6 decimals) you get for 1 ETH (with 18 decimals)
-//        uint256 ethValue = (ethAmount * ethPriceInUsdc) / 1e18; // Convert to USDC terms with 6 decimals
+        Currency currency0;
+        Currency currency1;
+
+        // Determine currency0 and currency1 based on token addresses
+        // On Base: WETH (0x4200...) < USDC (0x8335...), so WETH is token0 and USDC is token1
+        bool usdcIsToken0 = uint160(usdc) < uint160(weth);
+
+        if (usdcIsToken0) {
+            currency0 = Currency.wrap(usdc);
+            currency1 = Currency.wrap(weth);
+        } else {
+            currency0 = Currency.wrap(weth);
+            currency1 = Currency.wrap(usdc);
+        }
+
+        // Determine if we're swapping from token0 to token1 or vice versa
+        // For ETH->USDC price quote, we need to know the direction based on token ordering
+        bool zeroForOne = usdcIsToken0;
+
+        // Create the PoolKey for price quotation
+        PoolKey memory poolKey = PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: poolFee,
+            tickSpacing: TICK_SPACING,
+            hooks: address(0) // No hooks for basic pools
+        });
+
+        // Create parameters for the quoter to get ETH/USDC price
+        // We'll quote how much USDC we get for 1 ETH
+        // On Base: WETH is token0, USDC is token1, so ETH->USDC is token0->token1 (zeroForOne = true)
+        bool ethToUsdcDirection;
+
+        if (usdcIsToken0) {
+            // If USDC is token0, ETH->USDC is token1->token0, so zeroForOne = false
+            ethToUsdcDirection = false;
+        } else {
+            // If WETH is token0, ETH->USDC is token0->token1, so zeroForOne = true
+            ethToUsdcDirection = true;
+        }
+
+        QuoteExactSingleParams memory quoteParams = QuoteExactSingleParams({
+            poolKey: poolKey,
+            zeroForOne: ethToUsdcDirection,
+            exactAmount: uint128(1e18), // 1 ETH
+            hookData: ""
+        });
+
+        // Query the Uniswap V4 Quoter for current ETH price in USDC
+        (uint256 ethPriceInUsdc,) = IV4Quoter(UNISWAP_V4_QUOTER).quoteExactInputSingle(quoteParams);
+
+        // Calculate max borrowable USDC based on ETH value and LTV
+        // ethAmount is in wei (18 decimals), ethPriceInUsdc is in USDC's native 6 decimals
+        // This represents how many USDC units (with 6 decimals) you get for 1 ETH (with 18 decimals)
+        uint256 ethValue = (ethAmount * ethPriceInUsdc) / 1e18; // Convert to USDC terms with 6 decimals
 //        uint256 usdcToBorrow = (ethValue * ltv) / 100;
 
         uint256 usdcToBorrow = 100000;
