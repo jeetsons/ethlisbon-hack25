@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { WalletProvider } from './contexts/WalletContext';
+import WalletProvider from './contexts/WalletContext';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Funding from './pages/Funding';

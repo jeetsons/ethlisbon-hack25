@@ -22,7 +22,7 @@ export const contractAddresses: Record<number, ContractAddresses> = {
     uniswapV4PositionManager: '0x0000000000000000000000000000000000000000' as Address, // Replace with actual address
     usdc: '0x0000000000000000000000000000000000000000' as Address, // Replace with actual address
     weth: '0x0000000000000000000000000000000000000000' as Address, // Replace with actual address
-  }
+  },
 };
 
 export const getContractAddresses = (chainId: number): ContractAddresses => {

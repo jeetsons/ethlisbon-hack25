@@ -1,4 +1,4 @@
-import { Address } from 'viem';
+import type { Address } from 'viem';
 import { baseChain } from './chains';
 
 // Contract addresses for Base chain (ID: 8453)
@@ -22,7 +22,7 @@ export const contractAddresses: Record<number, ContractAddresses> = {
     uniswapV4PositionManager: '0x8e2badc74a4560f7670d79fc67a5bf5b0d802a48' as Address,
     usdc: '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA' as Address, // Base USDC
     weth: '0x4200000000000000000000000000000000000006' as Address, // Base WETH
-  }
+  },
 };
 
 export const getContractAddresses = (chainId: number): ContractAddresses => {
