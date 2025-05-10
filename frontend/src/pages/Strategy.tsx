@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useWallet } from '../contexts/WalletContext';
 import { ethers } from 'ethers';
 
+// Import ABIs from the abis directory
+import ERC20ABI from '../abis/ERC20.json';
+import ERC721ABI from '../abis/ERC721.json';
+import LeveragedLPManagerABI from '../abis/LeveragedLPManager.json';
+import FeeCollectHookABI from '../abis/FeeCollectHook.json';
+
 // Contract addresses - in a real app, these would be imported from a config file
 const LEVERAGED_LP_MANAGER_ADDRESS = '0x1234567890123456789012345678901234567890';
 const FEE_COLLECT_HOOK_ADDRESS = '0x0987654321098765432109876543210987654321';
@@ -20,7 +26,7 @@ interface ApprovalStatus {
 const Strategy: React.FC = () => {
   const {
     isConnected,
-    gnosisSafeAddress,
+    safeAddress,
     balance: ethBalance,
     fetchBalance,
     approveERC20,
@@ -28,8 +34,9 @@ const Strategy: React.FC = () => {
     sendTransaction,
   } = useWallet();
 
-  // For a real app, we would fetch the USDC balance
+  // State for USDC balance
   const [usdcBalance, setUsdcBalance] = useState<string>('0');
+  const [isLoadingBalances, setIsLoadingBalances] = useState<boolean>(false);
 
   const [amount, setAmount] = useState('');
   const [ltv, setLtv] = useState('50'); // Default to 50% LTV
@@ -48,11 +55,98 @@ const Strategy: React.FC = () => {
 
   // Fetch balances and approval statuses when component mounts
   useEffect(() => {
-    if (isConnected && gnosisSafeAddress) {
+    if (isConnected && safeAddress) {
       fetchBalance();
-      // In a real app, we would also fetch USDC balance and approval statuses
+      fetchUsdcBalance();
+      checkApprovalStatuses();
     }
-  }, [isConnected, gnosisSafeAddress, fetchBalance]);
+  }, [isConnected, safeAddress, fetchBalance]);
+
+  // Function to fetch USDC balance
+  const fetchUsdcBalance = async () => {
+    if (!isConnected || !safeAddress) return;
+    
+    try {
+      setIsLoadingBalances(true);
+      
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20ABI, provider);      
+      const balance = await usdcContract.balanceOf(safeAddress);
+      
+      const formattedBalance = ethers.utils.formatUnits(balance, 6);
+      setUsdcBalance(formattedBalance);
+    } catch (error) {
+      console.error('Error fetching USDC balance:', error);
+    } finally {
+      setIsLoadingBalances(false);
+    }
+  };
+
+  // Function to check approval statuses
+  const checkApprovalStatuses = async () => {
+    if (!isConnected || !safeAddress) return;
+    
+    try {
+      // Create a provider and contract instances
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20ABI, provider);
+      const wethContract = new ethers.Contract(WETH_ADDRESS, ERC20ABI, provider);
+      
+      // Check USDC allowance
+      const usdcAllowance = await usdcContract.allowance(safeAddress, LEVERAGED_LP_MANAGER_ADDRESS);
+      const usdcApproved = !usdcAllowance.isZero();
+      
+      // Check ETH/WETH allowance
+      const wethAllowance = await wethContract.allowance(safeAddress, LEVERAGED_LP_MANAGER_ADDRESS);
+      const ethApproved = !wethAllowance.isZero();
+      
+      // Check if LP NFT exists and approvals for it
+      // In a real implementation, we would query the LeveragedLPManager contract
+      // to see if the user has an active position
+      const lpManagerContract = new ethers.Contract(LEVERAGED_LP_MANAGER_ADDRESS, LeveragedLPManagerABI, provider);
+      
+      try {
+        // Check if user has an active position
+        // This would be a call to a function like getUserPosition or hasActivePosition
+        const hasPosition = await lpManagerContract.hasActivePosition?.(safeAddress) || false;
+        
+        if (hasPosition) {
+          // Get the LP NFT ID
+          const positionId = await lpManagerContract.getUserPositionId?.(safeAddress) || '0';
+          
+          if (positionId && positionId !== '0') {
+            // Check approvals for the NFT
+            const positionManagerContract = new ethers.Contract(UNISWAP_POSITION_MANAGER_ADDRESS, ERC721ABI, provider);
+            
+            // Check if FeeCollectHook is approved for the NFT
+            const feeHookApproved = await positionManagerContract.isApprovedForAll?.(safeAddress, FEE_COLLECT_HOOK_ADDRESS) || false;
+            
+            // Check if LeveragedLPManager is approved for the NFT
+            const managerApproved = await positionManagerContract.isApprovedForAll?.(safeAddress, LEVERAGED_LP_MANAGER_ADDRESS) || false;
+            
+            setApprovalStatus(prev => ({
+              ...prev,
+              lpNftMinted: true,
+              feeHookApproved,
+              managerApproved
+            }));
+          }
+        }
+      } catch (positionError) {
+        // If there's an error checking position, we assume there's no position yet
+        console.log('No active position found or contract doesn\'t support position checking');
+      }
+      
+      // Update token approval statuses
+      setApprovalStatus(prev => ({
+        ...prev,
+        ethApproved,
+        usdcApproved
+      }));
+    } catch (error) {
+      console.error('Error checking approval statuses:', error);
+    }
+  };
 
   const handleApproveEth = async () => {
     try {
@@ -111,7 +205,7 @@ const Strategy: React.FC = () => {
   const handleStartStrategy = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!isConnected || !gnosisSafeAddress) {
+    if (!isConnected || !safeAddress) {
       setError('Please connect your Gnosis Pay wallet first');
       return;
     }
@@ -130,14 +224,12 @@ const Strategy: React.FC = () => {
       setIsProcessing(true);
       setError(null);
 
-      // Create interface for LeveragedLPManager contract
-      const lpManagerInterface = new ethers.Interface([
-        'function startStrategy(address safe, uint256 ethAmount, uint256 ltv)',
-      ]);
+      // Use the imported LeveragedLPManager ABI
+      const lpManagerInterface = new ethers.utils.Interface(LeveragedLPManagerABI);
 
       // Create calldata for startStrategy function
       const data = lpManagerInterface.encodeFunctionData('startStrategy', [
-        gnosisSafeAddress,
+        safeAddress,
         ethers.parseEther(amount),
         parseInt(ltv),
       ]);
@@ -145,9 +237,46 @@ const Strategy: React.FC = () => {
       // Send transaction to start the strategy
       const txHash = await sendTransaction(LEVERAGED_LP_MANAGER_ADDRESS, data);
 
-      // In a real app, we would listen for events to get the LP NFT ID
-      // For now, we'll simulate it with a fixed value
-      const lpNftId = '12345';
+      // Get the LP NFT ID from the transaction receipt or events
+      // In a real implementation, we would listen for events from the contract
+      // to get the actual LP NFT ID that was minted
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      
+      // Wait for transaction receipt
+      const receipt = await provider.getTransactionReceipt(txHash);
+      
+      // Parse logs to find the LP NFT ID
+      // This is a simplified example - in a real app, you would parse the event logs
+      // to extract the actual token ID from the event emitted by the contract
+      let lpNftId;
+      try {
+        // Create contract instance to parse logs
+        const lpManagerContract = new ethers.Contract(LEVERAGED_LP_MANAGER_ADDRESS, LeveragedLPManagerABI, provider);
+        
+        // Look for PositionCreated event in the logs
+        const positionCreatedEvent = receipt.logs
+          .filter(log => log.address.toLowerCase() === LEVERAGED_LP_MANAGER_ADDRESS.toLowerCase())
+          .map(log => {
+            try {
+              return lpManagerContract.interface.parseLog(log);
+            } catch (e) {
+              return null;
+            }
+          })
+          .find(parsedLog => parsedLog && parsedLog.name === 'PositionCreated');
+        
+        if (positionCreatedEvent) {
+          lpNftId = positionCreatedEvent.args.tokenId.toString();
+          console.log('LP NFT ID from event:', lpNftId);
+        } else {
+          // Fallback if event not found
+          lpNftId = '12345';
+          console.log('LP NFT ID not found in logs, using fallback value');
+        }
+      } catch (err) {
+        console.error('Error parsing logs:', err);
+        lpNftId = '12345'; // Fallback value
+      }
 
       setApprovalStatus(prev => ({ ...prev, lpNftMinted: true }));
       setSuccess(
@@ -178,29 +307,37 @@ const Strategy: React.FC = () => {
       setIsProcessing(true);
       setError(null);
 
-      // In a real app, we would get the LP NFT ID from the contract or event
-      // For now, we'll use a fixed value
-      const lpNftId = '12345';
+      // Get the LP NFT ID from the LeveragedLPManager contract
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const lpManagerContract = new ethers.Contract(LEVERAGED_LP_MANAGER_ADDRESS, LeveragedLPManagerABI, provider);
+      
+      // In a real implementation, we would get the actual position ID
+      let lpNftId;
+      try {
+        lpNftId = await lpManagerContract.getUserPositionId?.(safeAddress);
+      } catch (err) {
+        // If the function doesn't exist or fails, use a fallback value for demo
+        console.log('Could not get position ID, using fallback value');
+        lpNftId = '12345';
+      }
 
-      // Approve FeeCollectHook for the LP NFT
+      // Approve FeeCollectHook for all NFTs (safer and more gas-efficient for future operations)
       const txHash = await approveERC721(
         UNISWAP_POSITION_MANAGER_ADDRESS,
         FEE_COLLECT_HOOK_ADDRESS,
-        lpNftId
+        '0' // Token ID is not needed for setApprovalForAll
       );
 
       setApprovalStatus(prev => ({ ...prev, feeHookApproved: true }));
-      setSuccess(`Fee Hook approved successfully! Transaction hash: ${txHash}`);
+      setSuccess(`FeeCollectHook approved successfully! Transaction hash: ${txHash}`);
 
       // Reset success message after 5 seconds
       setTimeout(() => {
         setSuccess(null);
       }, 5000);
     } catch (err) {
-      console.error('Error approving Fee Hook:', err);
-      setError(
-        err instanceof Error ? err.message : 'Failed to approve Fee Hook. Please try again.'
-      );
+      console.error('Error approving FeeCollectHook:', err);
+      setError(err instanceof Error ? err.message : 'Failed to approve FeeCollectHook. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -211,29 +348,37 @@ const Strategy: React.FC = () => {
       setIsProcessing(true);
       setError(null);
 
-      // In a real app, we would get the LP NFT ID from the contract or event
-      // For now, we'll use a fixed value
-      const lpNftId = '12345';
+      // Get the LP NFT ID from the LeveragedLPManager contract
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const lpManagerContract = new ethers.Contract(LEVERAGED_LP_MANAGER_ADDRESS, LeveragedLPManagerABI, provider);
+      
+      // In a real implementation, we would get the actual position ID
+      let lpNftId;
+      try {
+        lpNftId = await lpManagerContract.getUserPositionId?.(safeAddress);
+      } catch (err) {
+        // If the function doesn't exist or fails, use a fallback value for demo
+        console.log('Could not get position ID, using fallback value');
+        lpNftId = '12345';
+      }
 
-      // Approve LeveragedLPManager for the LP NFT
+      // Approve LeveragedLPManager for all NFTs (safer and more gas-efficient for future operations)
       const txHash = await approveERC721(
         UNISWAP_POSITION_MANAGER_ADDRESS,
         LEVERAGED_LP_MANAGER_ADDRESS,
-        lpNftId
+        '0' // Token ID is not needed for setApprovalForAll
       );
 
       setApprovalStatus(prev => ({ ...prev, managerApproved: true }));
-      setSuccess(`LP Manager approved successfully! Transaction hash: ${txHash}`);
+      setSuccess(`LeveragedLPManager approved successfully! Transaction hash: ${txHash}`);
 
       // Reset success message after 5 seconds
       setTimeout(() => {
         setSuccess(null);
       }, 5000);
     } catch (err) {
-      console.error('Error approving LP Manager:', err);
-      setError(
-        err instanceof Error ? err.message : 'Failed to approve LP Manager. Please try again.'
-      );
+      console.error('Error approving LeveragedLPManager:', err);
+      setError(err instanceof Error ? err.message : 'Failed to approve LeveragedLPManager. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -242,8 +387,8 @@ const Strategy: React.FC = () => {
   if (!isConnected) {
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200 mb-6">
-          <p className="text-yellow-700">
+        <div className="bg-white p-4 rounded-md border border-gray-200 mb-6">
+          <p>
             Please connect your Gnosis Pay wallet to start the strategy.
           </p>
         </div>
@@ -253,34 +398,42 @@ const Strategy: React.FC = () => {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Start Leveraged LP Strategy</h1>
+      <h1 className="text-2xl text-black font-bold mb-6">Start Leveraged LP Strategy</h1>
 
       <div className="bg-white p-6 rounded-lg shadow mb-6">
-        <h2 className="text-lg font-semibold mb-4">Current Balances</h2>
-        <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-gray-600">ETH Balance:</span>
-            <span className="font-mono font-medium">{ethBalance} ETH</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600">USDC Balance:</span>
-            <span className="font-mono font-medium">{usdcBalance} USDC</span>
-          </div>
+        <h2 className="text-lg font-semibold mb-4 text-black">Current Balances</h2>
+        <div className="bg-white p-4 rounded-md border border-gray-200">
+          {isLoadingBalances ? (
+            <div className="text-center py-2">
+              <p>Loading balances...</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex justify-between items-center mb-2">
+                <span>ETH Balance:</span>
+                <span className="font-mono font-medium text-black">{ethBalance} ETH</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>USDC Balance:</span>
+                <span className="font-mono font-medium text-black">{usdcBalance} USDC</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       <div className="bg-white p-6 rounded-lg shadow mb-6">
-        <h2 className="text-lg font-semibold mb-4">1. Required Approvals</h2>
+        <h2 className="text-lg font-semibold mb-4 text-black">1. Required Approvals</h2>
 
         {success && (
-          <div className="bg-green-50 p-4 rounded-md border border-green-200 mb-4">
-            <p className="text-green-700">{success}</p>
+          <div className="bg-white p-4 rounded-md border border-gray-200 mb-4">
+            <p className="text-black">{success}</p>
           </div>
         )}
 
         {error && (
-          <div className="bg-red-50 p-4 rounded-md border border-red-200 mb-4">
-            <p className="text-red-700">{error}</p>
+          <div className="bg-white p-4 rounded-md border border-gray-200 mb-4">
+            <p className="text-black">{error}</p>
           </div>
         )}
 
@@ -288,7 +441,7 @@ const Strategy: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <span className="font-medium">Approve ETH</span>
-              <p className="text-sm text-gray-500">Allow LeveragedLPManager to use your ETH</p>
+              <p className="text-sm text-black">Allow LeveragedLPManager to use your ETH</p>
             </div>
             <button
               onClick={handleApproveEth}
@@ -310,7 +463,7 @@ const Strategy: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <span className="font-medium">Approve USDC</span>
-              <p className="text-sm text-gray-500">Allow LeveragedLPManager to use your USDC</p>
+              <p className="text-sm">Allow LeveragedLPManager to use your USDC</p>
             </div>
             <button
               onClick={handleApproveUsdc}

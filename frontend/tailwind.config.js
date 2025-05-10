@@ -5,6 +5,35 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
+    textColor: {
+      black: '#000000',
+      white: '#ffffff',
+      // Keep other colors accessible but make black the default
+      gray: {
+        50: '#f9fafb',
+        100: '#f3f4f6',
+        200: '#e5e7eb',
+        300: '#d1d5db',
+        400: '#9ca3af',
+        500: '#6b7280',
+        600: '#4b5563',
+        700: '#374151',
+        800: '#1f2937',
+        900: '#111827',
+      },
+      red: {
+        500: '#ef4444',
+        600: '#dc2626',
+      },
+      green: {
+        500: '#10b981',
+        600: '#059669',
+      },
+      blue: {
+        500: '#3b82f6',
+        600: '#2563eb',
+      },
+    },
     extend: {
       colors: {
         primary: {
@@ -36,5 +65,13 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    function({ addBase }) {
+      addBase({
+        'html': { color: '#000000' },
+        'body': { color: '#000000' },
+        'p, h1, h2, h3, h4, h5, h6, span, div, label, li': { color: '#000000' },
+      });
+    },
+  ],
 }

@@ -3,6 +3,12 @@
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
+  color: black;
+}
+
+/* Set default text color to black for all text elements */
+p, span, h1, h2, h3, h4, h5, h6, div, label, li, a, button, input, textarea, select {
+  color: black;
 }
 
 .logo {
